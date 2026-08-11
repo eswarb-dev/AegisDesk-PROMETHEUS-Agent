@@ -10,6 +10,7 @@ import { registerMessageRouter } from "./messageRouter.js";
 import { createMessageLoggingMiddleware } from "./messageLogging.js";
 import { createTelegramRateLimitMiddleware } from "./rateLimiter.js";
 import { createTelegramSendQueueMiddleware } from "./sendQueue.js";
+import { createTelegramErrorBoundaryMiddleware } from "./errorBoundary.js";
 
 export function createBot(config: AppConfig, store: MemoryStore): Telegraf {
   const bot = new Telegraf(config.telegramBotToken);
@@ -18,6 +19,7 @@ export function createBot(config: AppConfig, store: MemoryStore): Telegraf {
   const brain = new PrometheusBrain(config, store, undefined, undefined, contacts, storage);
 
   bot.use(createTelegramSendQueueMiddleware());
+  bot.use(createTelegramErrorBoundaryMiddleware());
   bot.use(createTelegramRateLimitMiddleware(config, contacts, storage));
   bot.use(createMessageLoggingMiddleware(config, contacts, storage));
   registerCommands(bot, config, store, contacts, storage);

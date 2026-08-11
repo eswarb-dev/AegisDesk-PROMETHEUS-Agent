@@ -114,9 +114,15 @@ export class TelegramSendQueue {
         return;
       }
       logger.warn("telegram_send_failed", { error_type: retryAfterMs != null ? "telegram_429" : "telegram_send_failed" });
-      job.reject(error);
+      job.reject(normalizeTelegramSendError(error));
     }
   }
+}
+
+function normalizeTelegramSendError(error: unknown): Error {
+  if (error instanceof Error) return error;
+  const retryAfterMs = getRetryAfterMs(error);
+  return new Error(retryAfterMs != null ? "telegram_429" : "telegram_send_failed");
 }
 
 export const telegramSendQueue = new TelegramSendQueue();

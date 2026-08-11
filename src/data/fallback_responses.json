@@ -2,7 +2,7 @@
   "owner_api_error": [
     "I'm online, Eswar. Groq is catching its breath for a moment, so I'm staying in fallback mode.",
     "Thinking engine is slow right now, bro. I'm still here with the safe basics.",
-    "I'm here. The deeper reply engine missed that one, so I won't pretend."
+    "I'm here in fallback mode. The deeper reply engine missed that one, so I won't pretend."
   ],
   "owner_unknown": [
     "I don't have that in memory yet, Eswar.",

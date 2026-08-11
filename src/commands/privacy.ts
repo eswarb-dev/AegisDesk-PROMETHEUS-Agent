@@ -3,14 +3,15 @@ import type { Context } from "telegraf";
 export async function privacyCommand(ctx: Context): Promise<void> {
   await ctx.reply(
     [
-      "Privacy",
+      "PROMETHEUS privacy:",
       "",
-      "PROMETHEUS may store short safe summaries of your conversations for continuity.",
-      "It does not store raw full conversations as primary memory.",
-      "Secrets, tokens, OTPs, passwords, and payment info should not be stored.",
-      "Eswar's private owner memory remains restricted.",
-      "",
-      "Use /forgetme to delete your stored user memory."
+      "- I store short summaries and bot conversation history for continuity.",
+      "- Eswar, the owner, may review conversations that happen inside this bot.",
+      "- For trusted contacts, I may summarize emotional distress to Eswar.",
+      "- I do not share every message automatically.",
+      "- I cannot access your private Telegram chats.",
+      "- I do not store passwords, tokens, OTPs, or secrets.",
+      "- You can use /forgetme to delete your stored memory."
     ].join("\n")
   );
 }

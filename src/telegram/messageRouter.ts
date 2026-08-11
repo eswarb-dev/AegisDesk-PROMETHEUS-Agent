@@ -1,12 +1,39 @@
 import type { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
+import type { AppConfig } from "../config.js";
+import { answerOwnerLogQuestion } from "../commands/adminLogs.js";
 import { userMemoryStore } from "../memory/userMemoryStore.js";
 import { PrometheusBrain } from "../prometheus/prometheusBrain.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
+import { TrustedSupportService } from "../support/trustedSupportService.js";
 
-export function registerMessageRouter(bot: Telegraf, brain: PrometheusBrain, storage?: StorageProvider): void {
+export function registerMessageRouter(
+  bot: Telegraf,
+  brain: PrometheusBrain,
+  storage: StorageProvider | undefined,
+  config: Pick<AppConfig, "ownerTelegramId" | "groqApiKey" | "groqModel">
+): void {
   bot.on(message("text"), async (ctx) => {
     if (ctx.message.text.startsWith("/")) return;
+    if (storage && await answerOwnerLogQuestion(ctx.message.text, ctx, config, storage)) return;
+    if (storage?.kind === "supabase" && ctx.from?.id && ctx.chat?.id) {
+      const user = await storage.users.getTelegramUserById(ctx.from.id);
+      if (user?.role === "trusted_contact" && user.contact_id && user.memory_enabled !== false) {
+        const support = new TrustedSupportService(config, storage);
+        const response = await support.handleMessage({
+          contact: {
+            contactId: user.contact_id,
+            telegramUserId: String(ctx.from.id),
+            chatId: String(ctx.chat.id),
+            displayName: user.display_name ?? user.contact_id
+          },
+          text: ctx.message.text,
+          telegram: ctx.telegram
+        });
+        await ctx.reply(response);
+        return;
+      }
+    }
     const response = await brain.respond(ctx.from?.id, ctx.message.text);
     await ctx.reply(response);
     if (ctx.from?.id) {

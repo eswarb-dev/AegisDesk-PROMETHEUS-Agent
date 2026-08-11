@@ -1,5 +1,6 @@
 import type { Context } from "telegraf";
 import type { AppConfig } from "../config.js";
+import { memoryUserCommand } from "./adminLogs.js";
 import { memoryStatus, memorySummary } from "../memory/memoryFormatter.js";
 import { MemoryStore } from "../memory/memoryStore.js";
 import { isOwner } from "../memory/ownerMemory.js";
@@ -52,6 +53,10 @@ export async function memoryCommand(ctx: Context, config: Pick<AppConfig, "owner
   }
 
   if (subcommand === "user") {
+    if (storage?.kind === "supabase") {
+      await memoryUserCommand(ctx, config, storage);
+      return;
+    }
     const userId = text.split(/\s+/)[2];
     const user = userId ? await userMemoryStore.get(userId) : undefined;
     await ctx.reply(

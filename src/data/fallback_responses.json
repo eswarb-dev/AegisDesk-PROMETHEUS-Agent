@@ -1,8 +1,8 @@
 {
   "owner_api_error": [
-    "I'm online, Eswar, but Groq is not responding right now ⚠️",
-    "Thinking engine is down for a moment, bro. Basic mode is still active.",
-    "I'm here. Just running in fallback mode right now."
+    "I'm online, Eswar. Groq is catching its breath for a moment, so I'm staying in fallback mode.",
+    "Thinking engine is slow right now, bro. I'm still here with the safe basics.",
+    "I'm here. The deeper reply engine missed that one, so I won't pretend."
   ],
   "owner_unknown": [
     "I don't have that in memory yet, Eswar.",
@@ -12,5 +12,9 @@
   "non_owner": [
     "PROMETHEUS is active. Personalised memory is owner-restricted.",
     "Public-safe mode only. Owner memory is restricted."
+  ],
+  "api_error": [
+    "I'm here, but the deeper reply engine is slow right now. Try me again in a moment.",
+    "I caught a connection hiccup. I won't guess from broken context."
   ]
 }

@@ -5,11 +5,14 @@ import { memoryStore } from "../memory/memoryStore.js";
 import { shareIndexStore } from "../memory/shareIndexStore.js";
 import { userMemoryStore } from "../memory/userMemoryStore.js";
 import { AuditRepository } from "./auditRepository.js";
+import { AdminRepository } from "./adminRepository.js";
 import { ContactRepository } from "./contactRepository.js";
 import { ConversationSummaryRepository } from "./conversationSummaryRepository.js";
 import { MemoryRepository } from "./memoryRepository.js";
+import { MessageRepository } from "./messageRepository.js";
 import { ShareIndexRepository } from "./shareIndexRepository.js";
 import { getSupabaseServerClient } from "./supabaseClient.js";
+import { SupportRepository } from "./supportRepository.js";
 import { UserRepository } from "./userRepository.js";
 
 export type JsonStorageProvider = {
@@ -29,6 +32,9 @@ export type SupabaseStorageProvider = {
   shareIndexes: ShareIndexRepository;
   conversations: ConversationSummaryRepository;
   audit: AuditRepository;
+  admin: AdminRepository;
+  messages: MessageRepository;
+  support: SupportRepository;
 };
 
 export type StorageProvider = JsonStorageProvider | SupabaseStorageProvider;
@@ -53,7 +59,10 @@ export function createStorageProvider(config: AppConfig): StorageProvider {
     contacts: new ContactRepository(supabase),
     shareIndexes: new ShareIndexRepository(supabase),
     conversations: new ConversationSummaryRepository(supabase),
-    audit: new AuditRepository(supabase)
+    audit: new AuditRepository(supabase),
+    admin: new AdminRepository(supabase),
+    messages: new MessageRepository(supabase),
+    support: new SupportRepository(supabase)
   };
 }
 

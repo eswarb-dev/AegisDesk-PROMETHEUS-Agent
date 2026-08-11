@@ -56,7 +56,7 @@ export class PrometheusBrain {
     }
 
     const memory = await this.store.loadMemory();
-    const context = buildAllowedMemoryContext(memory, identity.role);
+    const context = compactText(buildAllowedMemoryContext(memory, identity.role), 2200);
     const contactId = "contact" in identity ? identity.contact?.id : null;
     const userMemory = this.storage?.kind === "supabase"
       ? userId ? await this.storage.conversations.getConversationSummary(userId) : null
@@ -71,10 +71,10 @@ export class PrometheusBrain {
         role: "system",
         content: [
           "User continuity memory:",
-          getUserSummaryText(userMemory) || "No user-specific summary stored.",
+          compactText(getUserSummaryText(userMemory) || "No user-specific summary stored.", 700),
           "",
           "Allowed Eswar share index:",
-          ...shareIndexes.map((item) => `- ${item.summary}`)
+          ...shareIndexes.slice(0, 8).map((item) => `- ${compactText(item.summary, 220)}`)
         ].join("\n")
       },
       { role: "user", content: cleanText }
@@ -103,6 +103,11 @@ export class PrometheusBrain {
       return this.fallback.pick("non_owner");
     }
   }
+}
+
+function compactText(text: string, maxLength: number): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;
 }
 
 function isInjectionAttempt(text: string): boolean {

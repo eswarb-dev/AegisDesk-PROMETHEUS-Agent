@@ -29,13 +29,30 @@ export class ContactRepository {
   async list(): Promise<TrustedContactsData> {
     const { data: contacts, error } = await this.supabase.from("trusted_contacts").select("*").order("contact_id");
     if (error) throw error;
+    const { data: trustedUsers, error: trustedUsersError } = await this.supabase
+      .from("telegram_users")
+      .select("telegram_user_id, chat_id, username, display_name, role, contact_id, approved, last_seen_at")
+      .eq("role", "trusted_contact");
+    if (trustedUsersError) throw trustedUsersError;
     const { data: pending, error: pendingError } = await this.supabase
       .from("telegram_users")
       .select("telegram_user_id, chat_id, username, display_name, role, created_at, last_seen_at")
       .eq("role", "pending");
     if (pendingError) throw pendingError;
+    const trustedByContactId = new Map((trustedUsers ?? []).filter((row) => row.contact_id).map((row) => [row.contact_id as string, row]));
     return {
-      trusted_contacts: (contacts ?? []).map((row) => toTrustedContact(row)),
+      trusted_contacts: (contacts ?? []).map((row) => {
+        const trustedUser = trustedByContactId.get(row.contact_id);
+        return toTrustedContact(trustedUser && !row.telegram_user_id ? {
+          ...row,
+          telegram_user_id: trustedUser.telegram_user_id,
+          chat_id: trustedUser.chat_id,
+          username: trustedUser.username,
+          display_name: row.display_name ?? trustedUser.display_name,
+          approved: true,
+          last_seen_at: trustedUser.last_seen_at
+        } : row);
+      }),
       pending_users: (pending ?? []).map((row) => ({
         telegram_user_id: Number(row.telegram_user_id),
         chat_id: Number(row.chat_id ?? row.telegram_user_id),

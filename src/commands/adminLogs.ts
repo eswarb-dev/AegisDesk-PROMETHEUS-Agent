@@ -15,7 +15,7 @@ export async function usersCommand(ctx: Context, config: Pick<AppConfig, "ownerT
     return;
   }
   const users = await storage.admin.getUsers();
-  await audit(ctx, storage, "admin.users.view", null, "Owner viewed bot user list");
+  await safeAudit(ctx, storage, "admin.users.view", null, "Owner viewed bot user list");
   await ctx.reply(users.length ? ["PROMETHEUS users", ...users.map((user) => formatUser(user))].join("\n") : "No users have talked to PROMETHEUS inside this bot yet.");
 }
 
@@ -26,7 +26,7 @@ export async function ownerContactsCommand(ctx: Context, config: Pick<AppConfig,
     return;
   }
   const contacts = await storage.contacts.list();
-  await audit(ctx, storage, "admin.contacts.view", null, "Owner viewed trusted contacts and pending users");
+  await safeAudit(ctx, storage, "admin.contacts.view", null, "Owner viewed trusted contacts and pending users");
   await ctx.reply([
     "Trusted contacts",
     ...contacts.trusted_contacts.map((contact) => `${contact.name} (${contact.id}): ${contact.telegram_user_id ? `linked to ${contact.telegram_user_id}` : "not linked"}`),
@@ -48,7 +48,7 @@ export async function logsCommand(ctx: Context, config: Pick<AppConfig, "ownerTe
     return;
   }
   const messages = await storage.messages.getRecentMessages({ contactId, limit: 20 });
-  await audit(ctx, storage, "admin.logs.view", contactId ?? null, contactId ? `Owner viewed ${contactId} bot logs` : "Owner viewed recent bot logs");
+  await safeAudit(ctx, storage, "admin.logs.view", contactId ?? null, contactId ? `Owner viewed ${contactId} bot logs` : "Owner viewed recent bot logs");
   await ctx.reply(messages.length ? formatMessages(contactId ? `${titleCase(contactId)} — recent PROMETHEUS logs` : "Recent PROMETHEUS bot activity", messages) : noMessages(contactId));
 }
 
@@ -64,7 +64,7 @@ export async function chatCommand(ctx: Context, config: Pick<AppConfig, "ownerTe
     return;
   }
   const messages = await storage.messages.getRecentMessages({ contactId, limit: Number(limitText) || 20 });
-  await audit(ctx, storage, "admin.chat.view", contactId, `Owner viewed ${contactId} bot conversation`);
+  await safeAudit(ctx, storage, "admin.chat.view", contactId, `Owner viewed ${contactId} bot conversation`);
   await ctx.reply(messages.length ? formatMessages(`${titleCase(contactId)} — latest bot conversation`, messages) : noMessages(contactId));
 }
 
@@ -81,7 +81,7 @@ export async function searchCommand(ctx: Context, config: Pick<AppConfig, "owner
     return;
   }
   const messages = await storage.messages.searchMessages({ contactId, query, limit: 20 });
-  await audit(ctx, storage, "admin.logs.search", contactId, `Owner searched ${contactId} bot logs`);
+  await safeAudit(ctx, storage, "admin.logs.search", contactId, `Owner searched ${contactId} bot logs`);
   await ctx.reply(messages.length ? formatMessages(`${titleCase(contactId)} — PROMETHEUS log search`, messages) : `No PROMETHEUS bot log matches for ${titleCase(contactId)}.`);
 }
 
@@ -102,7 +102,7 @@ export async function summaryCommand(ctx: Context, config: Pick<AppConfig, "owne
     return;
   }
   const summary = await storage.conversations.getConversationSummary(user.telegram_user_id);
-  await audit(ctx, storage, "admin.summary.view", contactId, `Owner viewed ${contactId} conversation summary`);
+  await safeAudit(ctx, storage, "admin.summary.view", contactId, `Owner viewed ${contactId} conversation summary`);
   await ctx.reply(summary ? `${titleCase(contactId)} — PROMETHEUS conversation summary\n${summary.short_summary}` : `No PROMETHEUS conversation summary found for ${titleCase(contactId)}.`);
 }
 
@@ -123,7 +123,7 @@ export async function memoryUserCommand(ctx: Context, config: Pick<AppConfig, "o
     return;
   }
   const summary = await storage.conversations.getConversationSummary(user.telegram_user_id);
-  await audit(ctx, storage, "admin.memory.view", contactId, `Owner viewed ${contactId} memory summary`);
+  await safeAudit(ctx, storage, "admin.memory.view", contactId, `Owner viewed ${contactId} memory summary`);
   await ctx.reply(summary ? `${titleCase(contactId)} memory summary\n${summary.short_summary}` : `No stored PROMETHEUS memory summary for ${titleCase(contactId)}.`);
 }
 
@@ -140,7 +140,7 @@ export async function exportCommand(ctx: Context, config: Pick<AppConfig, "owner
   }
   const messages = await storage.messages.exportMessages(contactId);
   const body = buildExport(contactId, messages);
-  await audit(ctx, storage, "admin.export", contactId, `Owner exported ${contactId} bot conversation`);
+  await safeAudit(ctx, storage, "admin.export", contactId, `Owner exported ${contactId} bot conversation`);
   if ("replyWithDocument" in ctx && typeof ctx.replyWithDocument === "function") {
     await ctx.replyWithDocument({ source: Buffer.from(body), filename: `prometheus-${contactId}-conversation.txt` });
     return;
@@ -211,8 +211,16 @@ function extractContactId(text: string): ContactId | null {
 async function findUserForContact(storage: Extract<StorageProvider, { kind: "supabase" }>, contactId: string) {
   const contacts = await storage.contacts.list();
   const contact = contacts.trusted_contacts.find((item) => item.id === contactId);
-  if (!contact?.telegram_user_id) return null;
+  if (!contact?.telegram_user_id) return storage.users.getTelegramUserByContactId(contactId);
   return storage.users.getTelegramUserById(contact.telegram_user_id);
+}
+
+async function safeAudit(ctx: Context, storage: Extract<StorageProvider, { kind: "supabase" }>, action: string, contactId: string | null, safeDescription: string): Promise<void> {
+  try {
+    await audit(ctx, storage, action, contactId, safeDescription);
+  } catch {
+    // Admin actions should still answer the owner if audit storage is behind the code schema.
+  }
 }
 
 async function audit(ctx: Context, storage: Extract<StorageProvider, { kind: "supabase" }>, action: string, contactId: string | null, safeDescription: string): Promise<void> {

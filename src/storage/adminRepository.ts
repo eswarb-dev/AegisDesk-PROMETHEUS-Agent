@@ -4,6 +4,7 @@ import type { TelegramUserRow } from "./userRepository.js";
 export type AdminAuditRow = {
   actor_telegram_user_id: string;
   action: string;
+  target_table?: string | null;
   target_user_id?: string | null;
   target_contact_id?: string | null;
   safe_description?: string | null;
@@ -52,7 +53,10 @@ export class AdminRepository {
   }
 
   async writeAuditLog(input: AdminAuditRow): Promise<void> {
-    const { error } = await this.supabase.from("memory_audit_logs").insert(input);
+    const { error } = await this.supabase.from("memory_audit_logs").insert({
+      target_table: input.target_table ?? "admin",
+      ...input
+    });
     if (error) throw error;
   }
 }

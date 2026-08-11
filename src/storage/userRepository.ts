@@ -46,6 +46,17 @@ export class UserRepository {
     return data as TelegramUserRow | null;
   }
 
+  async getTelegramUserByContactId(contactId: string): Promise<TelegramUserRow | null> {
+    const { data, error } = await this.supabase
+      .from("telegram_users")
+      .select("telegram_user_id, chat_id, username, display_name, role, contact_id, memory_enabled, approved, last_seen_at")
+      .eq("contact_id", contactId)
+      .eq("role", "trusted_contact")
+      .maybeSingle();
+    if (error) throw error;
+    return data as TelegramUserRow | null;
+  }
+
   async updateLastSeen(telegramUserId: string | number): Promise<void> {
     const { error } = await this.supabase
       .from("telegram_users")

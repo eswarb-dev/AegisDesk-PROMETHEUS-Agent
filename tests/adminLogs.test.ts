@@ -29,7 +29,8 @@ function createSupabaseStorage() {
       })
     },
     users: {
-      getTelegramUserById: async (id: string | number) => id === 2002 ? { telegram_user_id: "2002", role: "trusted_contact", contact_id: "aksharaa" } : null
+      getTelegramUserById: async (id: string | number) => id === 2002 ? { telegram_user_id: "2002", role: "trusted_contact", contact_id: "aksharaa" } : null,
+      getTelegramUserByContactId: async (contactId: string) => contactId === "vathanya" ? { telegram_user_id: "3003", role: "trusted_contact", contact_id: "vathanya" } : null
     },
     conversations: {
       getConversationSummary: async () => ({ short_summary: "Asked about Eswar safely." })
@@ -79,13 +80,13 @@ describe("owner-scoped admin logs", () => {
     expect(ctx.replies[0]).toContain("Scope: messages inside @AegisDesk_PrometheusBot only");
   });
 
-  it("natural owner question checks logs and handles unlinked contacts", async () => {
+  it("natural owner question checks contact_id fallback when trusted_contacts is stale", async () => {
     const ctx = createMockContext({ userId: 1001, text: "Did Vathanya talk to you?" });
 
     const handled = await answerOwnerLogQuestion("Did Vathanya talk to you?", ctx, config, createSupabaseStorage() as never);
 
     expect(handled).toBe(true);
-    expect(ctx.replies[0]).toContain("not linked to a Telegram ID");
+    expect(ctx.replies[0]).toContain("has not messaged PROMETHEUS yet");
   });
 
   it("redacts secrets before storage", () => {

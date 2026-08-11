@@ -138,7 +138,7 @@ export function createTelegramSendQueueMiddleware(queue = telegramSendQueue): Mi
     ctx.reply = (async (text: string, ...args: unknown[]) => {
       const chatId = ctx.chat?.id;
       if (chatId == null) return originalReply(text, ...(args as []));
-      const results = await queue.reply(chatId, text, (chunk) => originalReply(chunk, ...(args as [])));
+      const results = await queue.reply(chatId, text, (chunk) => originalSendMessage(chatId, chunk, ...(args as [])));
       return results[results.length - 1];
     }) as typeof ctx.reply;
 

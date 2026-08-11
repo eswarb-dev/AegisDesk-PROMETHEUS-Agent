@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { exportCommand } from "../src/commands/adminLogs.js";
-import { TelegramSendQueue, splitTelegramText } from "../src/telegram/sendQueue.js";
+import { createTelegramSendQueueMiddleware, TelegramSendQueue, splitTelegramText } from "../src/telegram/sendQueue.js";
 import { createMockContext } from "./helpers.js";
 
 function createStorage() {
@@ -85,5 +85,29 @@ describe("TelegramSendQueue", () => {
 
     expect(ctx.documents).toHaveLength(1);
     expect(ctx.replies).toHaveLength(0);
+  });
+
+  it("middleware reply uses raw sendMessage and avoids nested queue deadlock", async () => {
+    const queue = new TelegramSendQueue({ perChatIntervalMs: 0, globalIntervalMs: 0, sleep: async () => undefined });
+    const sent: string[] = [];
+    const ctx = {
+      chat: { id: 42 },
+      telegram: {
+        sendMessage: async (_chatId: number, text: string) => {
+          sent.push(text);
+          return { text };
+        }
+      },
+      reply: async (_text?: string) => {
+        throw new Error("original ctx.reply should not be used by queued reply");
+      }
+    };
+    const middleware = createTelegramSendQueueMiddleware(queue);
+
+    await middleware(ctx as never, async () => {
+      await ctx.reply("hello");
+    });
+
+    expect(sent).toEqual(["hello"]);
   });
 });

@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+coverage
+src/data/trusted_contacts.json
+src/data/user_memories.json
+src/data/conversation_summaries.json
+src/data/eswar_memory.json
+src/data/eswar_share_index.json

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: prometheus-telegram-chatbot
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: OWNER_TELEGRAM_ID
+        sync: false
+      - key: BOT_PUBLIC_URL
+        sync: false

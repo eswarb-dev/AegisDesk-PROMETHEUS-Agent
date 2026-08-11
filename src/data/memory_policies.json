@@ -1,0 +1,14 @@
+{
+  "store_raw_conversations": false,
+  "default_state_expiry_days": 7,
+  "blocked_persistent_content": [
+    "passwords",
+    "API keys",
+    "tokens",
+    "OTPs",
+    "payment information",
+    "private keys",
+    "raw private conversations"
+  ],
+  "privacy_principle": "Internal knowledge is not permission to disclose."
+}

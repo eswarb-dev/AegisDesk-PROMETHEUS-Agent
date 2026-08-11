@@ -1,0 +1,16 @@
+{
+  "owner_api_error": [
+    "I'm online, Eswar, but Groq is not responding right now ⚠️",
+    "Thinking engine is down for a moment, bro. Basic mode is still active.",
+    "I'm here. Just running in fallback mode right now."
+  ],
+  "owner_unknown": [
+    "I don't have that in memory yet, Eswar.",
+    "Not stored in my memory yet, bro. I won't guess.",
+    "Give me that detail once, and I'll remember the pattern."
+  ],
+  "non_owner": [
+    "PROMETHEUS is active. Personalised memory is owner-restricted.",
+    "Public-safe mode only. Owner memory is restricted."
+  ]
+}

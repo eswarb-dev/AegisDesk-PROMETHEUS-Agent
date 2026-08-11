@@ -8,6 +8,10 @@ export type AppConfig = {
   groqModel: string;
   ownerTelegramId: string;
   botPublicUrl?: string;
+  databaseProvider: "json" | "supabase";
+  supabaseUrl?: string;
+  supabaseServiceRoleKey?: string;
+  supabaseAnonKey?: string;
   nodeEnv: "development" | "test" | "production";
   port: number;
 };
@@ -21,6 +25,11 @@ export function loadConfig(env = process.env): AppConfig {
     if (!telegramBotToken) throw new Error("TELEGRAM_BOT_TOKEN is required");
     if (!ownerTelegramId) throw new Error("OWNER_TELEGRAM_ID is required");
   }
+  const databaseProvider = (env.DATABASE_PROVIDER ?? (env.SUPABASE_URL ? "supabase" : "json")) as AppConfig["databaseProvider"];
+  if (nodeEnv === "production" && databaseProvider === "supabase") {
+    if (!env.SUPABASE_URL) throw new Error("SUPABASE_URL is required when DATABASE_PROVIDER=supabase");
+    if (!env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY is required when DATABASE_PROVIDER=supabase");
+  }
 
   return {
     telegramBotToken,
@@ -28,6 +37,10 @@ export function loadConfig(env = process.env): AppConfig {
     groqModel: env.GROQ_MODEL ?? "llama-3.1-8b-instant",
     ownerTelegramId,
     botPublicUrl: env.BOT_PUBLIC_URL,
+    databaseProvider,
+    supabaseUrl: env.SUPABASE_URL,
+    supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    supabaseAnonKey: env.SUPABASE_ANON_KEY,
     nodeEnv,
     port: Number(env.PORT ?? 3000)
   };

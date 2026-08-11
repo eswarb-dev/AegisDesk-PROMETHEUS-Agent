@@ -256,6 +256,10 @@ GROQ_MODEL=
 OWNER_TELEGRAM_ID=
 NODE_ENV=development
 PORT=3001
+DATABASE_PROVIDER=json
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_ANON_KEY=
 ```
 
 Required for production webhook mode:
@@ -265,6 +269,17 @@ BOT_PUBLIC_URL=
 ```
 
 Never commit `.env`.
+
+For production Supabase memory, use:
+
+```env
+DATABASE_PROVIDER=supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=server-only-service-role-key
+SUPABASE_ANON_KEY=optional-anon-key
+```
+
+The backend uses `SUPABASE_SERVICE_ROLE_KEY` only on the server. Do not expose it to Telegram users or frontend code.
 
 ## Local Development
 
@@ -373,12 +388,8 @@ During build, JSON data is copied into `dist/src/data`.
 
 Current persistent data:
 
-- Eswar's structured memory in `src/data/eswar_memory.json`
-- Trusted-contact mappings and pending users in `src/data/trusted_contacts.json`
-- Per-user safe summaries in `src/data/user_memories.json`
-- Conversation summary scaffold in `src/data/conversation_summaries.json`
-- Owner-approved Eswar share index in `src/data/eswar_share_index.json`
-- Memory policy config in `src/data/memory_policies.json`
+- Supabase Postgres when `DATABASE_PROVIDER=supabase`
+- JSON local fallback when `DATABASE_PROVIDER=json`
 - Fallback responses in `src/data/fallback_responses.json`
 
 Current non-persistent data:
@@ -388,6 +399,45 @@ Current non-persistent data:
 - API request logs
 
 PROMETHEUS stores short, safe, structured summaries instead of raw full conversations.
+
+## Supabase Memory Backend
+
+Supabase Postgres stores:
+
+- `telegram_users`
+- `memory_items`
+- `conversation_summaries`
+- `eswar_share_index`
+- `trusted_contacts`
+- `memory_audit_logs`
+
+Migration SQL:
+
+```text
+supabase/migrations/001_prometheus_memory.sql
+```
+
+The migration enables RLS on all memory tables and denies anonymous access. The Telegram backend uses the service role key from Render/server env.
+
+Do not use Supabase Storage buckets for memory. Memory belongs in Postgres.
+
+## JSON to Supabase Migration
+
+One-time import command:
+
+```bash
+npm run migrate:memory
+```
+
+It reads local JSON memory files and upserts into Supabase:
+
+- `src/data/eswar_memory.json`
+- `src/data/trusted_contacts.json`
+- `src/data/user_memories.json`
+- `src/data/conversation_summaries.json`
+- `src/data/eswar_share_index.json`
+
+The script is designed to be idempotent and prints summary counts only. It does not print private memory content.
 
 ## Persistent Per-User Memory
 

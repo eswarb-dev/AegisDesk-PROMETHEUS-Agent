@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.js";
 import { TrustedContactService } from "../contacts/trustedContactService.js";
 import { MemoryStore } from "../memory/memoryStore.js";
 import { userMemoryStore } from "../memory/userMemoryStore.js";
+import type { StorageProvider } from "../storage/storageProvider.js";
 import { isOwner } from "../memory/ownerMemory.js";
 import { displayName } from "../utils/safeText.js";
 
@@ -10,7 +11,8 @@ export async function startCommand(
   ctx: Context,
   config: Pick<AppConfig, "ownerTelegramId">,
   store: MemoryStore,
-  contacts?: TrustedContactService
+  contacts?: TrustedContactService,
+  storage?: StorageProvider
 ): Promise<void> {
   const from = ctx.from;
   const chat = ctx.chat;
@@ -28,14 +30,27 @@ export async function startCommand(
     trusted: false
   });
   if (!owner) await contacts?.registerPending(stored);
-  await userMemoryStore.upsertIdentity({
+  if (storage?.kind === "supabase") {
+    await storage.users.createOrUpdateTelegramUser({
+      telegram_user_id: String(from.id),
+      chat_id: String(chat.id),
+      username: from.username ?? null,
+      display_name: stored.display_name,
+      role: owner ? "owner" : "pending",
+      contact_id: null,
+      approved: owner,
+      memory_enabled: true
+    });
+  } else {
+    await userMemoryStore.upsertIdentity({
     telegram_user_id: from.id,
     chat_id: chat.id,
     role: owner ? "owner" : "pending",
     contact_id: null,
     display_name: stored.display_name,
     username: from.username ?? null
-  });
+    });
+  }
 
   await ctx.reply(
     owner

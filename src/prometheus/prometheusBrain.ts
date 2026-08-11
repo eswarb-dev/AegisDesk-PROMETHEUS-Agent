@@ -4,6 +4,9 @@ import { MemoryStore } from "../memory/memoryStore.js";
 import { shareIndexStore } from "../memory/shareIndexStore.js";
 import { buildAllowedMemoryContext } from "../memory/trustedMemoryContext.js";
 import { userMemoryStore } from "../memory/userMemoryStore.js";
+import type { StorageProvider } from "../storage/storageProvider.js";
+import type { ConversationSummaryRow } from "../storage/conversationSummaryRepository.js";
+import type { UserMemoryRecord } from "../memory/userMemoryStore.js";
 import { isPrivateEswarQuestion, resolveAccessProfile } from "../security/accessControl.js";
 import { normalizeText } from "../utils/safeText.js";
 import { fallbackResponder, type FallbackResponder } from "./fallbackResponder.js";
@@ -20,7 +23,8 @@ export class PrometheusBrain {
     private readonly store: MemoryStore,
     private readonly groq: ChatEngine = new GroqClient(config),
     private readonly fallback: FallbackResponder = fallbackResponder,
-    private readonly contacts?: TrustedContactService
+    private readonly contacts?: TrustedContactService,
+    private readonly storage?: StorageProvider
   ) {}
 
   async respond(userId: number | undefined, text: string): Promise<string> {
@@ -53,9 +57,13 @@ export class PrometheusBrain {
 
     const memory = await this.store.loadMemory();
     const context = buildAllowedMemoryContext(memory, identity.role);
-    const userMemory = userId ? await userMemoryStore.get(userId) : undefined;
     const contactId = "contact" in identity ? identity.contact?.id : null;
-    const shareIndexes = await shareIndexStore.listAllowed(identity.role, contactId);
+    const userMemory = this.storage?.kind === "supabase"
+      ? userId ? await this.storage.conversations.getConversationSummary(userId) : null
+      : userId ? await userMemoryStore.get(userId) : undefined;
+    const shareIndexes = this.storage?.kind === "supabase"
+      ? await this.storage.shareIndexes.getShareIndexesForContact(identity.role === "trusted_contact" ? contactId ?? null : null)
+      : await shareIndexStore.listAllowed(identity.role, contactId);
     const messages: ChatMessage[] = [
       { role: "system", content: PROMETHEUS_SYSTEM_PROMPT },
       { role: "system", content: `Server-filtered allowed memory:\n${context}` },
@@ -63,7 +71,7 @@ export class PrometheusBrain {
         role: "system",
         content: [
           "User continuity memory:",
-          userMemory?.conversation_summary || "No user-specific summary stored.",
+          getUserSummaryText(userMemory) || "No user-specific summary stored.",
           "",
           "Allowed Eswar share index:",
           ...shareIndexes.map((item) => `- ${item.summary}`)
@@ -152,6 +160,12 @@ function getTrustedEswarSuggestions(): string {
     "",
     "Private conversations and owner-only memory stay restricted."
   ].join("\n");
+}
+
+function getUserSummaryText(memory: ConversationSummaryRow | UserMemoryRecord | null | undefined): string | undefined {
+  if (!memory) return undefined;
+  if ("short_summary" in memory) return memory.short_summary;
+  return memory.conversation_summary;
 }
 
 function getDirectOwnerReply(text: string): string | undefined {

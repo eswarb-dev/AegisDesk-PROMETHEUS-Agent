@@ -1,14 +1,17 @@
 import type { Context } from "telegraf";
 import type { AppConfig } from "../config.js";
 import { TrustedContactService } from "../contacts/trustedContactService.js";
+import type { StorageProvider } from "../storage/storageProvider.js";
 import { displayName } from "../utils/safeText.js";
 
 export async function whoamiCommand(
   ctx: Context,
   service: TrustedContactService,
-  config: Pick<AppConfig, "ownerTelegramId">
+  config: Pick<AppConfig, "ownerTelegramId">,
+  storage?: StorageProvider
 ): Promise<void> {
-  const identity = await service.resolveRole(ctx.from?.id);
+  const dbUser = storage?.kind === "supabase" && ctx.from?.id ? await storage.users.getTelegramUserById(ctx.from.id) : null;
+  const identity = dbUser ? { role: dbUser.role } : await service.resolveRole(ctx.from?.id);
   const from = ctx.from;
   const chat = ctx.chat;
   const ownerMatch = Boolean(from?.id && String(from.id) === String(config.ownerTelegramId));

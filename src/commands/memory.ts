@@ -4,8 +4,9 @@ import { memoryStatus, memorySummary } from "../memory/memoryFormatter.js";
 import { MemoryStore } from "../memory/memoryStore.js";
 import { isOwner } from "../memory/ownerMemory.js";
 import { userMemoryStore } from "../memory/userMemoryStore.js";
+import { getStorageSummary, type StorageProvider } from "../storage/storageProvider.js";
 
-export async function memoryCommand(ctx: Context, config: Pick<AppConfig, "ownerTelegramId">, store: MemoryStore): Promise<void> {
+export async function memoryCommand(ctx: Context, config: Pick<AppConfig, "ownerTelegramId">, store: MemoryStore, storage?: StorageProvider): Promise<void> {
   if (!isOwner(ctx.from?.id, config)) {
     await ctx.reply("PROMETHEUS is active, but this personalised memory is owner-only.");
     return;
@@ -20,6 +21,20 @@ export async function memoryCommand(ctx: Context, config: Pick<AppConfig, "owner
     await userMemoryStore.load(true);
     await ctx.reply("Memory reloaded.");
     return;
+  }
+
+  if (subcommand === "summary") {
+    const summary = storage ? await getStorageSummary(storage) : undefined;
+    if (summary) {
+      await ctx.reply([
+        `Memory storage: ${summary.storage === "supabase" ? "Supabase" : "JSON"}`,
+        `Owner memories: ${summary.ownerMemories}`,
+        `User memories: ${summary.userMemories}`,
+        `Trusted contacts: ${summary.trustedContacts}`,
+        `Share indexes: ${summary.shareIndexes}`
+      ].join("\n"));
+      return;
+    }
   }
 
   if (subcommand === "users") {
@@ -56,5 +71,5 @@ export async function memoryCommand(ctx: Context, config: Pick<AppConfig, "owner
   }
 
   const memory = await store.loadMemory();
-  await ctx.reply(subcommand === "summary" ? memorySummary(memory) : memoryStatus(memory));
+  await ctx.reply(memoryStatus(memory));
 }

@@ -16,25 +16,27 @@ import { untrustCommand } from "../commands/untrust.js";
 import { whoamiCommand } from "../commands/whoami.js";
 import { TrustedContactService } from "../contacts/trustedContactService.js";
 import { MemoryStore } from "../memory/memoryStore.js";
+import type { StorageProvider } from "../storage/storageProvider.js";
 
 export function registerCommands(
   bot: Telegraf,
   config: Pick<AppConfig, "ownerTelegramId">,
   store: MemoryStore,
-  contacts: TrustedContactService
+  contacts: TrustedContactService,
+  storage: StorageProvider
 ): void {
-  bot.start((ctx) => startCommand(ctx, config, store, contacts));
+  bot.start((ctx) => startCommand(ctx, config, store, contacts, storage));
   bot.help(helpCommand);
   bot.command("about", aboutCommand);
   bot.command("ping", pingCommand);
-  bot.command("memory", (ctx) => memoryCommand(ctx, config, store));
-  bot.command("contacts", (ctx) => contactsCommand(ctx, config, contacts));
-  bot.command("trust", (ctx) => trustCommand(ctx, config, contacts));
-  bot.command("untrust", (ctx) => untrustCommand(ctx, config, contacts));
-  bot.command("whoami", (ctx) => whoamiCommand(ctx, contacts, config));
+  bot.command("memory", (ctx) => memoryCommand(ctx, config, store, storage));
+  bot.command("contacts", (ctx) => contactsCommand(ctx, config, contacts, storage));
+  bot.command("trust", (ctx) => trustCommand(ctx, config, contacts, storage));
+  bot.command("untrust", (ctx) => untrustCommand(ctx, config, contacts, storage));
+  bot.command("whoami", (ctx) => whoamiCommand(ctx, contacts, config, storage));
   bot.command("tell", (ctx) => tellCommand(ctx, config, contacts));
   bot.command("privacy", privacyCommand);
-  bot.command("forgetme", forgetmeCommand);
+  bot.command("forgetme", (ctx) => forgetmeCommand(ctx, storage));
   bot.command("shareindex", (ctx) => shareindexCommand(ctx, config));
   bot.command("state", (ctx) => stateCommand(ctx, config));
 }

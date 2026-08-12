@@ -10,6 +10,8 @@ export type TelegramUserRow = {
   contact_id?: string | null;
   memory_enabled?: boolean;
   approved?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
   last_seen_at?: string | null;
 };
 

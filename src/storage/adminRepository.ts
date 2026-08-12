@@ -17,7 +17,7 @@ export class AdminRepository {
   async getUsers(): Promise<TelegramUserRow[]> {
     const { data, error } = await this.supabase
       .from("telegram_users")
-      .select("telegram_user_id, chat_id, username, display_name, role, contact_id, memory_enabled, approved, last_seen_at")
+      .select("id, telegram_user_id, chat_id, username, display_name, role, contact_id, memory_enabled, approved, created_at, updated_at, last_seen_at")
       .order("last_seen_at", { ascending: false, nullsFirst: false });
     if (error) throw error;
     return (data ?? []) as TelegramUserRow[];

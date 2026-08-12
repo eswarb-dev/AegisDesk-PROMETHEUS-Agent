@@ -20,6 +20,14 @@ export type BotMessageRow = {
   created_at?: string;
 };
 
+export type UserMessageStats = {
+  telegram_user_id: string;
+  total: number;
+  inbound: number;
+  outbound: number;
+  latest_message_at: string | null;
+};
+
 export class MessageRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
@@ -106,6 +114,34 @@ export class MessageRepository {
       .limit(100);
     if (error) throw error;
     return (data ?? []) as BotMessageRow[];
+  }
+
+  async getUserMessageStats(): Promise<Map<string, UserMessageStats>> {
+    const { data, error } = await this.supabase
+      .from("bot_messages")
+      .select("telegram_user_id, direction, created_at")
+      .order("created_at", { ascending: false })
+      .limit(5000);
+    if (error) throw error;
+    const stats = new Map<string, UserMessageStats>();
+    for (const row of data ?? []) {
+      const userId = String(row.telegram_user_id);
+      const existing = stats.get(userId) ?? {
+        telegram_user_id: userId,
+        total: 0,
+        inbound: 0,
+        outbound: 0,
+        latest_message_at: null
+      };
+      existing.total += 1;
+      if (row.direction === "inbound") existing.inbound += 1;
+      if (row.direction === "outbound") existing.outbound += 1;
+      if (!existing.latest_message_at || new Date(row.created_at).getTime() > new Date(existing.latest_message_at).getTime()) {
+        existing.latest_message_at = row.created_at;
+      }
+      stats.set(userId, existing);
+    }
+    return stats;
   }
 
   async exportMessages(contactId: string): Promise<BotMessageRow[]> {

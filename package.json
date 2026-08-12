@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json && node scripts/copy-data.mjs",
     "start": "node dist/src/index.js",
     "test": "vitest run",
-    "migrate:memory": "tsx scripts/migrate-json-to-supabase.ts"
+    "migrate:memory": "tsx scripts/migrate-json-to-supabase.ts",
+    "cleanup:users": "tsx scripts/cleanup-duplicate-users.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

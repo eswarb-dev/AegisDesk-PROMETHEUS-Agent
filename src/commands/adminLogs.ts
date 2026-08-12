@@ -4,19 +4,28 @@ import type { ContactId } from "../contacts/trustedContactTypes.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
 import type { BotMessageRow } from "../storage/messageRepository.js";
 import { isOwner } from "../memory/ownerMemory.js";
+import { buildUsersResponse, parseUsersMode } from "./usersList.js";
 
 const ALLOWED_CONTACTS: ContactId[] = ["aksharaa", "vathanya", "maddhurika"];
 const OWNER_RESTRICTED = "PROMETHEUS is active.\nThis command is owner-restricted.";
 
-export async function usersCommand(ctx: Context, config: Pick<AppConfig, "ownerTelegramId">, storage: StorageProvider): Promise<void> {
+export async function usersCommand(ctx: Context, config: Pick<AppConfig, "ownerTelegramId" | "botTimezone">, storage: StorageProvider): Promise<void> {
   if (!requireOwner(ctx, config)) return;
   if (storage.kind !== "supabase") {
     await ctx.reply("Supabase storage is required for PROMETHEUS log administration.");
     return;
   }
   const users = await storage.admin.getUsers();
+  const stats = await storage.messages.getUserMessageStats();
+  const mode = parseUsersMode((ctx.message as { text?: string } | undefined)?.text ?? "");
   await safeAudit(ctx, storage, "admin.users.view", null, "Owner viewed bot user list");
-  await ctx.reply(users.length ? ["PROMETHEUS users", ...users.map((user) => formatUser(user))].join("\n") : "No users have talked to PROMETHEUS inside this bot yet.");
+  await ctx.reply(buildUsersResponse({
+    users,
+    stats,
+    mode,
+    ownerTelegramId: config.ownerTelegramId,
+    timezone: config.botTimezone
+  }));
 }
 
 export async function ownerContactsCommand(ctx: Context, config: Pick<AppConfig, "ownerTelegramId">, storage: StorageProvider): Promise<void> {
@@ -236,11 +245,6 @@ async function audit(ctx: Context, storage: Extract<StorageProvider, { kind: "su
     target_contact_id: contactId,
     safe_description: safeDescription
   });
-}
-
-function formatUser(user: { display_name?: string | null; username?: string | null; telegram_user_id: string; role: string; contact_id?: string | null; last_seen_at?: string | null }): string {
-  const name = user.display_name || user.username || user.telegram_user_id;
-  return `${name}: ${user.role}${user.contact_id ? `/${user.contact_id}` : ""} last seen ${formatTime(user.last_seen_at)}`;
 }
 
 function formatMessages(title: string, messages: BotMessageRow[]): string {

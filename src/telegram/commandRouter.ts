@@ -33,7 +33,7 @@ import type { StorageProvider } from "../storage/storageProvider.js";
 
 export function registerCommands(
   bot: Telegraf,
-  config: Pick<AppConfig, "ownerTelegramId">,
+  config: Pick<AppConfig, "ownerTelegramId" | "botTimezone">,
   store: MemoryStore,
   contacts: TrustedContactService,
   storage: StorageProvider

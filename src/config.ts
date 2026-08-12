@@ -14,6 +14,7 @@ export type AppConfig = {
   supabaseAnonKey?: string;
   nodeEnv: "development" | "test" | "production";
   port: number;
+  botTimezone: string;
 };
 
 export function loadConfig(env = process.env): AppConfig {
@@ -42,7 +43,8 @@ export function loadConfig(env = process.env): AppConfig {
     supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
     supabaseAnonKey: env.SUPABASE_ANON_KEY,
     nodeEnv,
-    port: Number(env.PORT ?? 3000)
+    port: Number(env.PORT ?? 3000),
+    botTimezone: env.BOT_TIMEZONE ?? "Asia/Kolkata"
   };
 }
 

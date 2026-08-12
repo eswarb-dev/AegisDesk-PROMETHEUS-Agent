@@ -115,6 +115,42 @@ export const defaultConversationSummariesData = {
 
 export const defaultEswarShareIndexes = [
   {
+    key: "eswar_creator_identity",
+    summary: "Eswar B is the creator and owner of PROMETHEUS. PROMETHEUS exists under AegisDesk as a personalised agent built to support Eswar, remember safe context, and help trusted contacts communicate with him.",
+    visibility: "trusted_contacts",
+    allowed_contacts: ["aksharaa", "vathanya", "maddhurika"],
+    sensitivity: "low",
+    source: "owner_approved",
+    confidence: 1,
+    expires_at: null,
+    safe_answer_style: "direct and warm",
+    blocked_details: ["owner-only memory", "raw owner conversations", "private implementation details"]
+  },
+  {
+    key: "prometheus_role_for_eswar",
+    summary: "PROMETHEUS assists Eswar by helping with memory, projects, thinking support, trusted-contact communication, emotional support routing, and safe owner-scoped conversation continuity.",
+    visibility: "trusted_contacts",
+    allowed_contacts: ["aksharaa", "vathanya", "maddhurika"],
+    sensitivity: "low",
+    source: "owner_approved",
+    confidence: 1,
+    expires_at: null,
+    safe_answer_style: "clear and grounded",
+    blocked_details: ["owner-only memory", "admin logs", "private owner notes"]
+  },
+  {
+    key: "eswar_trusted_contact_bridge",
+    summary: "For trusted contacts, PROMETHEUS can act as a safe emotional bridge to Eswar. It may gently suggest contacting Eswar when someone feels low because Eswar would listen and try to support them.",
+    visibility: "trusted_contacts",
+    allowed_contacts: ["aksharaa", "vathanya", "maddhurika"],
+    sensitivity: "medium",
+    source: "owner_approved",
+    confidence: 1,
+    expires_at: null,
+    safe_answer_style: "supportive and privacy-safe",
+    blocked_details: ["private emotional analysis", "raw chats", "owner-only feelings"]
+  },
+  {
     key: "eswar_general_profile",
     summary: "Eswar B is the creator/owner of PROMETHEUS and AegisDesk. He is practical, observant, emotionally aware, and often acts as a problem solver and supporter for people around him.",
     visibility: "trusted_contacts",

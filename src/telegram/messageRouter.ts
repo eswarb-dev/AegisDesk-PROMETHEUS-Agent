@@ -18,7 +18,7 @@ export function registerMessageRouter(
     if (storage && await answerOwnerLogQuestion(ctx.message.text, ctx, config, storage)) return;
     if (storage?.kind === "supabase" && ctx.from?.id && ctx.chat?.id) {
       const user = await storage.users.getTelegramUserById(ctx.from.id);
-      if (user?.role === "trusted_contact" && user.contact_id && user.memory_enabled !== false) {
+      if (user?.role === "trusted_contact" && user.contact_id && user.memory_enabled !== false && isTrustedSupportIntent(ctx.message.text)) {
         const support = new TrustedSupportService(config, storage);
         const response = await support.handleMessage({
           contact: {
@@ -50,6 +50,10 @@ export function registerMessageRouter(
       }
     }
   });
+}
+
+function isTrustedSupportIntent(text: string): boolean {
+  return /\b(i feel|feel low|not okay|not ok|sad|alone|lonely|tired of|can't handle|cant handle|panic|broken|nobody cares|tell eswar|alert eswar|notify eswar|message eswar)\b/i.test(text);
 }
 
 function summarizeForStorage(text: string): string {

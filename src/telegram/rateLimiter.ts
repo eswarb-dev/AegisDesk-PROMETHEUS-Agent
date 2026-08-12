@@ -6,6 +6,7 @@ import type { StorageProvider } from "../storage/storageProvider.js";
 
 const WINDOW_MS = 60_000;
 export const TELEGRAM_COOLDOWN_MESSAGE = "Easy, I’m catching up 😌 Try again in a few seconds.";
+export const TRUSTED_CONTACT_COOLDOWN_MESSAGE = "Give me a few seconds, I’m catching up 😌";
 
 type Bucket = {
   timestamps: number[];
@@ -13,6 +14,7 @@ type Bucket = {
 
 export class PerUserRateLimiter {
   private readonly buckets = new Map<string, Bucket>();
+  private readonly cooldownNotices = new Map<string, number>();
 
   allow(userId: string | number, role: UserRole, now = Date.now()): boolean {
     const limit = limitForRole(role);
@@ -30,6 +32,15 @@ export class PerUserRateLimiter {
 
   reset(): void {
     this.buckets.clear();
+    this.cooldownNotices.clear();
+  }
+
+  shouldNotifyCooldown(chatId: string | number, now = Date.now()): boolean {
+    const key = String(chatId);
+    const last = this.cooldownNotices.get(key);
+    if (last != null && now - last < 30_000) return false;
+    this.cooldownNotices.set(key, now);
+    return true;
   }
 }
 
@@ -46,7 +57,10 @@ export function createTelegramRateLimitMiddleware(
     }
     const role = await resolveRole(ctx.from.id, config, contacts, storage);
     if (!limiter.allow(ctx.from.id, role)) {
-      await ctx.reply(TELEGRAM_COOLDOWN_MESSAGE);
+      const chatId = ctx.chat?.id ?? ctx.from.id;
+      if (limiter.shouldNotifyCooldown(chatId)) {
+        await ctx.reply(role === "trusted_contact" ? TRUSTED_CONTACT_COOLDOWN_MESSAGE : TELEGRAM_COOLDOWN_MESSAGE);
+      }
       return;
     }
     await next();
@@ -69,6 +83,6 @@ async function resolveRole(
 
 function limitForRole(role: UserRole): number {
   if (role === "owner") return 30;
-  if (role === "trusted_contact") return 10;
-  return 3;
+  if (role === "trusted_contact") return 12;
+  return 4;
 }

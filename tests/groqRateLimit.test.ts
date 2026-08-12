@@ -45,19 +45,34 @@ describe("Telegram per-user rate limiter", () => {
     expect(limiter.allow("owner", "owner", 1000)).toBe(false);
   });
 
-  it("allows trusted contacts 10 messages per minute", () => {
+  it("allows trusted contacts 12 messages per minute", () => {
     const limiter = new PerUserRateLimiter();
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 12; index += 1) {
       expect(limiter.allow("trusted", "trusted_contact", 1000)).toBe(true);
     }
     expect(limiter.allow("trusted", "trusted_contact", 1000)).toBe(false);
   });
 
-  it("allows public and pending users 3 messages per minute", () => {
+  it("allows public and pending users 4 messages per minute", () => {
     const limiter = new PerUserRateLimiter();
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 4; index += 1) {
       expect(limiter.allow("public", "user", 1000)).toBe(true);
     }
     expect(limiter.allow("public", "user", 1000)).toBe(false);
+  });
+
+  it("does not repeat cooldown notices within 30 seconds", () => {
+    const limiter = new PerUserRateLimiter();
+
+    expect(limiter.shouldNotifyCooldown("chat", 1000)).toBe(true);
+    expect(limiter.shouldNotifyCooldown("chat", 20_000)).toBe(false);
+    expect(limiter.shouldNotifyCooldown("chat", 32_000)).toBe(true);
+  });
+
+  it("trusted contact can send normal follow-up one minute later", () => {
+    const limiter = new PerUserRateLimiter();
+
+    expect(limiter.allow("trusted", "trusted_contact", 1000)).toBe(true);
+    expect(limiter.allow("trusted", "trusted_contact", 61_000)).toBe(true);
   });
 });

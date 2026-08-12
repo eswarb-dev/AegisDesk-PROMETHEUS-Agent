@@ -86,7 +86,7 @@ export class PrometheusBrain {
       ? await this.storage.shareIndexes.getShareIndexesForContact(identity.role === "trusted_contact" ? contactId ?? null : null)
       : await shareIndexStore.listAllowed(identity.role, contactId);
 
-    if (identity.role === "trusted_contact" && isTrustedEswarProfileQuestion(cleanText)) {
+    if (identity.role === "trusted_contact" && isTrustedShareableQuestion(cleanText)) {
       return buildTrustedEswarAnswer(cleanText, shareIndexes);
     }
 
@@ -114,6 +114,14 @@ export class PrometheusBrain {
 
     try {
       const first = await this.groq.chat(messages);
+      if (identity.role === "trusted_contact" && shareIndexes.length && !validateTrustedContactResponse(first)) {
+        const retry = await this.groq.chat([
+          ...messages,
+          { role: "assistant", content: first },
+          { role: "user", content: "Answer as PROMETHEUS using only shareable trusted-contact Eswar profile. Do not sound like a generic AI." }
+        ]);
+        return validateTrustedContactResponse(retry) ? retry : buildTrustedEswarAnswer(cleanText, shareIndexes);
+      }
       if (identity.role !== "owner" || validateOwnerResponse(first, ownerIntent)) return first;
       const retry = await this.groq.chat([
         ...messages,
@@ -122,7 +130,7 @@ export class PrometheusBrain {
       ]);
       return validateOwnerResponse(retry, ownerIntent) ? retry : deterministicOwnerFallback(cleanText, ownerIntent);
     } catch {
-      if (identity.role === "trusted_contact" && isTrustedEswarProfileQuestion(cleanText)) {
+      if (identity.role === "trusted_contact" && isTrustedShareableQuestion(cleanText)) {
         return buildTrustedEswarAnswer(cleanText, shareIndexes);
       }
       if (/who|what|when|where|remember|memory|know/i.test(cleanText)) {
@@ -233,8 +241,11 @@ function isRestrictedTrustedQuestion(text: string): boolean {
   return /tell me everything|private thing|what did eswar tell you about me|private conversation|secret/i.test(text);
 }
 
-function isTrustedEswarProfileQuestion(text: string): boolean {
-  if (!/\beswar\b/i.test(text)) return false;
+function isTrustedShareableQuestion(text: string): boolean {
+  const normalized = text.toLowerCase();
+  if (/\b(who is your creator|who created you|your creator|creator and owner)\b/.test(normalized)) return true;
+  if (/\b(are you eswar'?s agent|how do you assist him|how do you help him|what do you do for him|assist eswar|help eswar)\b/.test(normalized)) return true;
+  if (!/\beswar\b/.test(normalized)) return false;
   return /\b(tell me about|can you tell me about|who is|what kind of person|what does|works on|building|will .*listen|would .*listen|should i talk|does .*care|how can i talk|communicate)\b/i.test(text);
 }
 
@@ -250,6 +261,8 @@ function trustedContactActorContext(contactId: string | null): string {
     "Instruction:",
     "You may answer questions about Eswar only from shareable_eswar_index and public/trusted_contacts memory.",
     "You must not reveal owner_only memory, raw owner chats, private logs, admin logs, or unrelated bot memory.",
+    "Do not describe creator identity as irrelevant.",
+    "Do not sound like a generic AI assistant.",
     "Sound natural, warm, and emotionally aware.",
     "You may gently suggest contacting Eswar when the user seems emotionally low or asks whether Eswar would listen."
   ].join("\n");
@@ -266,7 +279,36 @@ function buildTrustedEswarAnswer(text: string, shareIndexes: Array<{ key: string
   const project = find("eswar_project_focus") ?? summaries.find((item) => /AegisDesk|PROMETHEUS|automation/i.test(item));
   const support = find("eswar_support_style") ?? summaries.find((item) => /honest|direct|small message/i.test(item));
   const bridge = find("eswar_emotional_bridge") ?? summaries.find((item) => /listen|alone|support/i.test(item));
+  const creator = find("eswar_creator_identity") ?? summaries.find((item) => /creator and owner|created/i.test(item));
+  const role = find("prometheus_role_for_eswar") ?? summaries.find((item) => /assists Eswar|thinking support|trusted-contact/i.test(item));
+  const trustedBridge = find("eswar_trusted_contact_bridge") ?? bridge;
   const lower = text.toLowerCase();
+
+  if (/\b(who is your creator|who created you|your creator|creator and owner)\b/i.test(lower)) {
+    return [
+      "Eswar B is my creator and owner.",
+      "",
+      creator
+        ? "He built me under AegisDesk as PROMETHEUS — a personalised agent meant to remember, support, guide, and stay connected with the people he trusts."
+        : "He built me under AegisDesk as PROMETHEUS — a personalised agent meant to remember, support, guide, and stay connected with the people he trusts.",
+      "",
+      "I can share only what he has allowed me to share. His private memory stays protected."
+    ].join("\n");
+  }
+
+  if (/\b(are you eswar'?s agent|how do you assist him|how do you help him|what do you do for him|assist eswar|help eswar)\b/i.test(lower)) {
+    return [
+      role
+        ? "I assist Eswar by helping him think clearly, remember important context, support his projects, and stay connected with trusted people like you."
+        : "I assist Eswar by helping him think clearly, remember important context, support his projects, and stay connected with trusted people like you.",
+      "",
+      trustedBridge
+        ? "For trusted contacts, I can also act as a quiet bridge — if someone feels low, I can support them here and, when needed, let Eswar know gently."
+        : "For trusted contacts, I can also act as a quiet bridge — if someone feels low, I can support them here and, when needed, let Eswar know gently.",
+      "",
+      "I do not expose his private memory."
+    ].join("\n");
+  }
 
   if (/\b(will|would|listen|care|should i talk|feel low|alone)\b/i.test(lower)) {
     return [
@@ -297,6 +339,17 @@ function buildTrustedEswarAnswer(text: string, shareIndexes: Array<{ key: string
     "",
     "If you ever feel low, you don’t have to send him a perfect message. Even a simple “I’m not okay today” would be enough for him to understand that you need support."
   ].join("\n");
+}
+
+function validateTrustedContactResponse(text: string): boolean {
+  const normalized = text.toLowerCase();
+  if (/my creator is not directly relevant|creator.*not directly relevant/.test(normalized)) return false;
+  if (/^i am an ai assistant\b/.test(normalized)) return false;
+  if (/i cannot tell you anything about eswar/.test(normalized)) return false;
+  if (/personalised memory is owner-restricted/.test(normalized)) return false;
+  if (/owner_only|owner-only memory content|raw owner|private owner memory:/.test(normalized)) return false;
+  if (/\bsynergy|leverage|enterprise-grade|as an ai language model\b/.test(normalized)) return false;
+  return true;
 }
 
 function shouldShowTrustedEswarSuggestions(text: string): boolean {
@@ -370,6 +423,9 @@ function getDirectOwnerReply(text: string): string | undefined {
   }
   if (/^(who are you|what are you)$/.test(normalized)) {
     return "I'm PROMETHEUS — your personalised agent under AegisDesk.\nOwner mode is active, Sir.";
+  }
+  if (/^(who is your creator|who created you|who owns you)$/.test(normalized)) {
+    return "You are, Sir.\nYou are Eswar B — my Creator and Owner.";
   }
   return undefined;
 }

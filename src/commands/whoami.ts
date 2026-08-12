@@ -12,9 +12,11 @@ export async function whoamiCommand(
   storage?: StorageProvider
 ): Promise<void> {
   const actor = await resolveActor(ctx, config, storage);
-  const identity = actor.isOwner ? { role: "owner" } : storage?.kind === "supabase" && ctx.from?.id
-    ? await storage.users.getTelegramUserById(ctx.from.id).then((user) => ({ role: user?.role ?? "user" }))
-    : await service.resolveRole(ctx.from?.id);
+  const identity = actor.isOwner
+    ? { role: "owner" }
+    : storage?.kind === "supabase" && ctx.from?.id
+      ? await resolveSupabaseWhoamiRole(ctx.from.id, storage)
+      : await service.resolveRole(ctx.from?.id);
   const from = ctx.from;
   const chat = ctx.chat;
   const ownerMatch = Boolean(from?.id && String(from.id) === String(config.ownerTelegramId));
@@ -34,4 +36,13 @@ export async function whoamiCommand(
     return;
   }
   await ctx.reply([...safeIdentity, `Owner match: ${ownerMatch}`, "", "Role: user", "Personalised memory: restricted"].join("\n"));
+}
+
+async function resolveSupabaseWhoamiRole(userId: string | number, storage: StorageProvider): Promise<{ role: string; contactId?: string | null }> {
+  if (storage.kind !== "supabase") return { role: "user" };
+  const user = await storage.users.getTelegramUserById(userId);
+  if (user?.role === "trusted_contact") return { role: "trusted_contact", contactId: user.contact_id };
+  const contact = await storage.contacts.findEnabledByTelegramId(userId);
+  if (contact) return { role: "trusted_contact", contactId: contact.id };
+  return { role: user?.role ?? "user" };
 }

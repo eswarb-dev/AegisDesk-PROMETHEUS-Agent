@@ -18,9 +18,9 @@ export function createMessageLoggingMiddleware(
       return;
     }
 
-    const identity = await contacts.resolveRole(ctx.from.id);
-    const role = isOwner(ctx.from.id, config) ? "owner" : identity.role;
-    const contactId = identity.contact?.id ?? null;
+    const identity = await resolveLoggingIdentity(ctx.from.id, config, contacts, storage);
+    const role = identity.role;
+    const contactId = identity.contactId;
     const memoryEnabled = await storage.users.getTelegramUserById(ctx.from.id).then((user) => user?.memory_enabled ?? true).catch(() => true);
 
     await safeLogWrite(async () => {
@@ -70,6 +70,24 @@ export function createMessageLoggingMiddleware(
 
     await next();
   };
+}
+
+async function resolveLoggingIdentity(
+  userId: number,
+  config: Pick<AppConfig, "ownerTelegramId">,
+  contacts: TrustedContactService,
+  storage: StorageProvider
+): Promise<{ role: "owner" | "trusted_contact" | "user" | "pending"; contactId: string | null }> {
+  if (isOwner(userId, config)) return { role: "owner", contactId: null };
+  if (storage.kind === "supabase") {
+    const user = await storage.users.getTelegramUserById(userId).catch(() => null);
+    if (user?.role === "trusted_contact" && user.contact_id) return { role: "trusted_contact", contactId: user.contact_id };
+    const contact = await storage.contacts.findEnabledByTelegramId(userId).catch(() => undefined);
+    if (contact) return { role: "trusted_contact", contactId: contact.id };
+    return { role: user?.role ?? "user", contactId: user?.contact_id ?? null };
+  }
+  const identity = await contacts.resolveRole(userId);
+  return { role: identity.role, contactId: identity.contact?.id ?? null };
 }
 
 async function safeLogWrite(write: () => Promise<void>): Promise<void> {

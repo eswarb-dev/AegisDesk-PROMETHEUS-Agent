@@ -281,6 +281,26 @@ describe("PROMETHEUS commands", () => {
     expect(ctx.replies[0]).toContain("Role: trusted_contact");
     expect(ctx.replies[0]).not.toContain("Owner match: false");
   });
+
+  it("/whoami recognises existing Supabase trusted contact links", async () => {
+    const service = { resolveRole: async () => ({ role: "user" }) };
+    const ctx = createMockContext({ userId: 3003, chatId: 3003, text: "/whoami", username: "vathanya" });
+    const storage = {
+      kind: "supabase",
+      users: {
+        getTelegramUserById: async () => ({ telegram_user_id: "3003", role: "user", contact_id: null })
+      },
+      contacts: {
+        findEnabledByTelegramId: async () => ({ id: "vathanya", name: "Vathanya", telegram_user_id: 3003, enabled: true })
+      }
+    };
+
+    await whoamiCommand(ctx, service as never, config, storage as never);
+
+    expect(ctx.replies[0]).toContain("Trust worthy person to My Master Eswar");
+    expect(ctx.replies[0]).toContain("Role: trusted_contact");
+    expect(ctx.replies[0]).not.toContain("Owner match: false");
+  });
 });
 
 function createTellStorage(options: { chatId: number | null; notificationEnabled?: boolean; repaired?: boolean }) {

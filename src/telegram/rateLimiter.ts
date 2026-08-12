@@ -76,6 +76,9 @@ async function resolveRole(
   if (String(userId) === String(config.ownerTelegramId)) return "owner";
   if (storage.kind === "supabase") {
     const user = await storage.users.getTelegramUserById(userId);
+    if (user?.role === "trusted_contact") return "trusted_contact";
+    const contact = await storage.contacts.findEnabledByTelegramId(userId);
+    if (contact) return "trusted_contact";
     return user?.role ?? "user";
   }
   return (await contacts.resolveRole(userId)).role;

@@ -8,6 +8,8 @@ import { userMemoryStore } from "../memory/userMemoryStore.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
 import type { ConversationSummaryRow } from "../storage/conversationSummaryRepository.js";
 import type { UserMemoryRecord } from "../memory/userMemoryStore.js";
+import type { ResolvedTelegramIdentity } from "../contacts/trustedContactTypes.js";
+import type { UserRole } from "../memory/memoryTypes.js";
 import { isPrivateEswarQuestion, resolveAccessProfile } from "../security/accessControl.js";
 import { normalizeText } from "../utils/safeText.js";
 import { fallbackResponder, type FallbackResponder } from "./fallbackResponder.js";
@@ -32,7 +34,7 @@ export class PrometheusBrain {
 
   async respond(userId: number | undefined, text: string): Promise<string> {
     const cleanText = normalizeText(text);
-    const identity = this.contacts ? await this.contacts.resolveRole(userId) : resolveAccessProfile(userId, this.config);
+    const identity = await this.resolveIdentity(userId);
     const access = {
       role: identity.role,
       canUsePrivateMemory: identity.role === "owner"
@@ -152,6 +154,32 @@ export class PrometheusBrain {
     } catch {
       return this.fallback.pick("non_owner");
     }
+  }
+
+  private async resolveIdentity(userId: number | undefined): Promise<ResolvedTelegramIdentity | ReturnType<typeof resolveAccessProfile>> {
+    if (this.storage?.kind === "supabase" && userId) {
+      if (String(userId) === String(this.config.ownerTelegramId)) return { role: "owner" };
+      const users = (this.storage as { users?: { getTelegramUserById?: (id: number) => Promise<{ role?: UserRole; contact_id?: string | null } | null> } }).users;
+      const contacts = (this.storage as {
+        contacts?: {
+        findByContactId?: (contactId: never) => Promise<ResolvedTelegramIdentity["contact"] | undefined>;
+        findEnabledByTelegramId?: (id: number) => Promise<ResolvedTelegramIdentity["contact"] | undefined>;
+        };
+      }).contacts;
+      const user = await users?.getTelegramUserById?.(userId).catch(() => null) ?? null;
+      if (user?.role === "trusted_contact" && user.contact_id) {
+        const contact = await contacts?.findByContactId?.(user.contact_id as never).catch(() => undefined);
+        return contact ? { role: "trusted_contact", contact } : { role: "trusted_contact" };
+      }
+      const linkedContact = await contacts?.findEnabledByTelegramId?.(userId).catch(() => undefined);
+      if (linkedContact) return { role: "trusted_contact", contact: linkedContact };
+      if (this.contacts) {
+        const localIdentity = await this.contacts.resolveRole(userId);
+        if (localIdentity.role === "trusted_contact") return localIdentity;
+      }
+      return { role: user?.role ?? "user" };
+    }
+    return this.contacts ? await this.contacts.resolveRole(userId) : resolveAccessProfile(userId, this.config);
   }
 
   private async answerOwnerFactQuestion(text: string, decision: ResponseDecision): Promise<string> {

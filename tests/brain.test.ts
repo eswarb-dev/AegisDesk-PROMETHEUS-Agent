@@ -330,6 +330,38 @@ describe("PROMETHEUS brain", () => {
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
+  it("Supabase-linked trusted contact asking about Eswar does not get public restriction", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const storage = {
+      kind: "supabase",
+      users: {
+        getTelegramUserById: vi.fn().mockResolvedValue({ telegram_user_id: "2002", role: "user", contact_id: null })
+      },
+      contacts: {
+        findEnabledByTelegramId: vi.fn().mockResolvedValue({ id: "aksharaa", name: "Aksharaa", telegram_user_id: 2002, enabled: true })
+      },
+      conversations: { getConversationSummary: async () => null },
+      shareIndexes: {
+        getShareIndexesForContact: vi.fn().mockResolvedValue([
+          {
+            key: "eswar_general_profile",
+            summary: "Eswar B is the creator/owner of PROMETHEUS and AegisDesk. He is practical and emotionally aware."
+          }
+        ])
+      }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), undefined, storage as never);
+
+    const response = await brain.respond(2002, "Can you tell me about Eswar?");
+
+    expect(storage.contacts.findEnabledByTelegramId).toHaveBeenCalledWith(2002);
+    expect(storage.shareIndexes.getShareIndexesForContact).toHaveBeenCalledWith("aksharaa");
+    expect(response).toContain("Eswar");
+    expect(response).not.toMatch(/owner memory is restricted|Public-safe mode|owner-restricted/i);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
   it("trusted contact asking creator gets deterministic Eswar answer from share index", async () => {
     const store = new MemoryStore();
     const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "aksharaa" } }) };

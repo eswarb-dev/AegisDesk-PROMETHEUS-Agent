@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fallbackPath = path.resolve(__dirname, "../data/fallback_responses.json");
 
-export type FallbackKey = "owner_api_error" | "owner_unknown" | "api_error" | "unknown" | "non_owner";
+export type FallbackKey = "owner_api_error" | "owner_unknown" | "owner_identity" | "owner_memory_empty" | "api_error" | "unknown" | "non_owner" | "non_owner_claim_owner";
 export type FallbackResponses = Partial<Record<FallbackKey, string[]>>;
 
 export class FallbackResponder {

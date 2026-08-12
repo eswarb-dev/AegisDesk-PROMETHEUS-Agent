@@ -34,7 +34,7 @@ export async function buildCapabilityResponse(text: string, storage?: StoragePro
     const contact = contacts.find((item) => item.id === contactId);
     if (contact?.linked) {
       return [
-        `Yes bro, I can send a message to ${contact.name} through \`/tell\`.`,
+        `Yes, Sir. I can send a message to ${contact.name} through \`/tell\`.`,
         "",
         "Use:",
         `\`/tell ${contact.id} <message>\``,
@@ -44,13 +44,13 @@ export async function buildCapabilityResponse(text: string, storage?: StoragePro
       ].join("\n");
     }
     return [
-      `Not yet bro. ${titleCase(contactId)} is trusted in the slot, but their Telegram ID is not linked.`,
+      `Not yet, Sir. ${titleCase(contactId)} is trusted in the slot, but their Telegram ID is not linked.`,
       "Ask them to send /start to PROMETHEUS first, then approve them with /trust."
     ].join("\n");
   }
 
   return [
-    "Yes bro, I can send owner-approved messages to linked trusted contacts.",
+    "Yes, Sir. I can send owner-approved messages to linked trusted contacts.",
     "",
     "Currently:",
     ...contacts.map((contact) => `${contact.name}: ${contact.linked ? "linked ✅" : "not linked"}`),
@@ -64,6 +64,7 @@ export function validateOwnerResponse(response: string, intent: OwnerIntent): bo
   const trimmed = response.trim();
   if (!trimmed) return false;
   if (/\b(how can i help|what can i help|what'?s on your mind|how can i assist)\b/i.test(trimmed)) return false;
+  if (/\b(you'?re not a trusted contact|you are on eswar'?s contact list|my owner eswar|someone else|cannot access owner memory|can't access owner memory|bro|buddy|my guy|dear user)\b/i.test(trimmed)) return false;
   if (intent === "capability_check" && !/\/tell|linked|not linked|can send/i.test(trimmed)) return false;
   const questions = trimmed.match(/\?/g)?.length ?? 0;
   if (questions > 1) return false;
@@ -74,7 +75,7 @@ export function validateOwnerResponse(response: string, intent: OwnerIntent): bo
 export function deterministicOwnerFallback(text: string, intent: OwnerIntent): string {
   if (intent === "emotional_state") {
     return [
-      "Yeah bro, tired mind mode.",
+      "Understood, Sir.",
       "Don’t force heavy thinking right now.",
       "",
       "Do the refresh first — water, face wash, small reset.",
@@ -82,12 +83,12 @@ export function deterministicOwnerFallback(text: string, intent: OwnerIntent): s
     ].join("\n");
   }
   if (intent === "capability_check") {
-    return "Yes bro, I can check trusted-contact messaging from backend state. Use `/contacts` to see linked contacts and `/tell <contact_id> <message>` to send.";
+    return "Yes, Sir. I can check trusted-contact messaging from backend state. Use `/contacts` to see linked contacts and `/tell <contact_id> <message>` to send.";
   }
   if (/problem solver|emotional supporter/i.test(text)) {
-    return "Locked in, bro. Problem solver first, emotional supporter beside it. I’ll answer directly instead of circling you with questions.";
+    return "Locked in, Sir. Problem solver first, emotional supporter beside it. I’ll answer directly instead of circling you with questions.";
   }
-  return "Got it, Eswar. I’ll answer directly with what I know, what I don’t, and the next command when there is one.";
+  return "Got it, Sir. I’ll answer directly with what I know, what I don’t, and the next command when there is one.";
 }
 
 function extractContactId(text: string): ContactId | null {

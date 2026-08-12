@@ -63,6 +63,47 @@ export class UserRepository {
     return this.getTelegramUserById(telegramUserId);
   }
 
+  async repairOwnerIdentity(input: {
+    telegramUserId: string;
+    chatId?: string | null;
+    username?: string | null;
+    displayName?: string | null;
+  }): Promise<void> {
+    const now = new Date().toISOString();
+    await this.supabase
+      .from("telegram_users")
+      .upsert(
+        {
+          telegram_user_id: input.telegramUserId,
+          chat_id: input.chatId ?? input.telegramUserId,
+          username: input.username ?? null,
+          display_name: input.displayName ?? "Eswar B",
+          role: "owner",
+          contact_id: null,
+          approved: true,
+          memory_enabled: true,
+          updated_at: now,
+          last_seen_at: now
+        },
+        { onConflict: "telegram_user_id" }
+      )
+      .throwOnError();
+    await this.supabase
+      .from("telegram_users")
+      .update({ role: "user", contact_id: null, approved: false, updated_at: now })
+      .eq("role", "owner")
+      .neq("telegram_user_id", input.telegramUserId)
+      .throwOnError();
+    await this.supabase
+      .from("trusted_contacts")
+      .update({ telegram_user_id: null, chat_id: null, approved: false, updated_at: now })
+      .eq("telegram_user_id", input.telegramUserId)
+      .throwOnError();
+    if (process.env.DEBUG_OWNER_IDENTITY === "1") {
+      console.info(JSON.stringify({ level: "info", message: "owner_role_repaired" }));
+    }
+  }
+
   async updateLastSeen(telegramUserId: string | number): Promise<void> {
     const { error } = await this.supabase
       .from("telegram_users")

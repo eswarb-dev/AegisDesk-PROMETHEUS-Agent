@@ -9,7 +9,8 @@
     "start": "node dist/src/index.js",
     "test": "vitest run",
     "migrate:memory": "tsx scripts/migrate-json-to-supabase.ts",
-    "cleanup:users": "tsx scripts/cleanup-duplicate-users.ts"
+    "cleanup:users": "tsx scripts/cleanup-duplicate-users.ts",
+    "fix:owner": "tsx scripts/fix-owner-identity.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

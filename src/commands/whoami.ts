@@ -1,5 +1,6 @@
 import type { Context } from "telegraf";
 import type { AppConfig } from "../config.js";
+import { resolveActor } from "../auth/ownerResolver.js";
 import { TrustedContactService } from "../contacts/trustedContactService.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
 import { displayName } from "../utils/safeText.js";
@@ -10,8 +11,10 @@ export async function whoamiCommand(
   config: Pick<AppConfig, "ownerTelegramId">,
   storage?: StorageProvider
 ): Promise<void> {
-  const dbUser = storage?.kind === "supabase" && ctx.from?.id ? await storage.users.getTelegramUserById(ctx.from.id) : null;
-  const identity = dbUser ? { role: dbUser.role } : await service.resolveRole(ctx.from?.id);
+  const actor = await resolveActor(ctx, config, storage);
+  const identity = actor.isOwner ? { role: "owner" } : storage?.kind === "supabase" && ctx.from?.id
+    ? await storage.users.getTelegramUserById(ctx.from.id).then((user) => ({ role: user?.role ?? "user" }))
+    : await service.resolveRole(ctx.from?.id);
   const from = ctx.from;
   const chat = ctx.chat;
   const ownerMatch = Boolean(from?.id && String(from.id) === String(config.ownerTelegramId));
@@ -24,7 +27,7 @@ export async function whoamiCommand(
   ];
 
   if (identity.role === "owner") {
-    await ctx.reply([...safeIdentity, "", "Role: owner", "Personalised memory: full access"].join("\n"));
+    await ctx.reply([...safeIdentity, "", "Role: owner", "Identity: Creator", "Address: Sir", "Personalised memory: full access"].join("\n"));
     return;
   }
   if (identity.role === "trusted_contact") {

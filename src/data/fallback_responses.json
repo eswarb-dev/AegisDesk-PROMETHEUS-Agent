@@ -1,13 +1,22 @@
 {
+  "owner_identity": [
+    "Yes, Sir. You are Eswar B — my Creator and Owner.",
+    "Owner mode active, Sir.",
+    "PROMETHEUS recognises you as Creator, Sir."
+  ],
+  "owner_memory_empty": [
+    "Sir, I do not have enough owner memory stored yet.",
+    "Owner memory is active, Sir, but this section is still light."
+  ],
   "owner_api_error": [
-    "I'm online, Eswar. Groq is catching its breath for a moment, so I'm staying in fallback mode.",
-    "Thinking engine is slow right now, bro. I'm still here with the safe basics.",
-    "I'm here in fallback mode. The deeper reply engine missed that one, so I won't pretend."
+    "I'm online, Sir. Groq is catching its breath for a moment, so I'm staying in fallback mode.",
+    "Thinking engine is slow right now, Sir. Basic mode is still active.",
+    "I'm here in fallback mode, Sir. The deeper reply engine missed that one, so I won't pretend."
   ],
   "owner_unknown": [
-    "I don't have that in memory yet, Eswar.",
-    "Not stored in my memory yet, bro. I won't guess.",
-    "Give me that detail once, and I'll remember the pattern."
+    "I don't have that in memory yet, Sir.",
+    "Not stored in my memory yet, Sir. I won't guess.",
+    "Give me that detail once, Sir, and I'll remember the pattern."
   ],
   "non_owner": [
     "PROMETHEUS is active. Personalised memory is owner-restricted.",
@@ -16,5 +25,8 @@
   "api_error": [
     "I'm here, but the deeper reply engine is slow right now. Try me again in a moment.",
     "I caught a connection hiccup. I won't guess from broken context."
+  ],
+  "non_owner_claim_owner": [
+    "PROMETHEUS is active. Owner identity must match the registered Telegram ID.\nI cannot unlock owner memory from text claims."
   ]
 }

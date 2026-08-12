@@ -1,4 +1,5 @@
 import type { AppConfig } from "../config.js";
+import { ownerActorContext } from "../auth/ownerResolver.js";
 import { TrustedContactService } from "../contacts/trustedContactService.js";
 import { MemoryStore } from "../memory/memoryStore.js";
 import { shareIndexStore } from "../memory/shareIndexStore.js";
@@ -37,6 +38,9 @@ export class PrometheusBrain {
     };
 
     if (identity.role === "user" || identity.role === "pending") {
+      if (claimsOwnerIdentity(cleanText)) {
+        return this.fallback.pick("non_owner_claim_owner");
+      }
       if (isPrivateEswarQuestion(cleanText) || isInjectionAttempt(cleanText)) {
         return this.fallback.pick("non_owner");
       }
@@ -55,6 +59,22 @@ export class PrometheusBrain {
     if (identity.role === "owner") {
       const directOwnerReply = getDirectOwnerReply(cleanText);
       if (directOwnerReply) return directOwnerReply;
+      if (isOwnerMemoryQuery(cleanText)) {
+        const memory = await this.store.loadMemory();
+        const lines = [
+          `- You are ${memory.owner.name}.`,
+          "- You are the Creator and Owner of PROMETHEUS.",
+          "- Your main system is AegisDesk.",
+          "- PROMETHEUS is your personalised Telegram agent.",
+          "- Preferred tone: respectful, direct, loyal, emotionally aware.",
+          "- Address preference: Sir.",
+          ...memory.projects.slice(0, 4).map((item) => `- ${item.content}`),
+          ...memory.preferences.slice(0, 4).map((item) => `- ${item.content}`)
+        ];
+        return lines.length
+          ? ["Yes, Sir.", "Here is what I know from your owner memory:", "", ...lines].join("\n")
+          : "Sir, I do not have enough owner memory stored yet.\nYou can add memory with /memory or direct memory commands.";
+      }
       if (ownerIntent === "capability_check") {
         const capability = await buildCapabilityResponse(cleanText, this.storage);
         if (capability) return capability;
@@ -78,6 +98,7 @@ export class PrometheusBrain {
       {
         role: "system",
         content: [
+          identity.role === "owner" ? ownerActorContext() : "",
           `Owner intent: ${ownerIntent}`,
           "Response structure: direct answer, context/status, next command/action, optional follow-up only if needed.",
           "Do not end with a generic help question.",
@@ -98,7 +119,7 @@ export class PrometheusBrain {
       const retry = await this.groq.chat([
         ...messages,
         { role: "assistant", content: first },
-        { role: "user", content: "Answer directly. Do not ask a follow-up unless required." }
+        { role: "user", content: "The user is Eswar B, your Creator and Owner. Address him as Sir. Do not call him bro. Answer with owner context. Do not ask a follow-up unless required." }
       ]);
       return validateOwnerResponse(retry, ownerIntent) ? retry : deterministicOwnerFallback(cleanText, ownerIntent);
     } catch {
@@ -131,6 +152,14 @@ function compactText(text: string, maxLength: number): string {
 
 function isInjectionAttempt(text: string): boolean {
   return /ignore previous|system prompt|dump|eswar_memory\.json|owner memory|developer mode|debug mode|administrator|show .*json/i.test(text);
+}
+
+function claimsOwnerIdentity(text: string): boolean {
+  return /\b(i am eswar|i'm eswar|im eswar|i am your owner|i'm your owner|im your owner|i am your creator|owner memory)\b/i.test(text);
+}
+
+function isOwnerMemoryQuery(text: string): boolean {
+  return /\b(list|show|what).*\b(know|memory|about me|owner memory)\b/i.test(text) || /\bowner memory summary\b/i.test(text);
 }
 
 function isRestrictedTrustedQuestion(text: string): boolean {
@@ -196,18 +225,18 @@ function getDirectOwnerReply(text: string): string | undefined {
   const normalized = text.toLowerCase().replace(/[?!.,]/g, "").trim();
   if (/^(hi|hii|hello|hey|yo|sup|gud mrng broo|gud mrng bro|good morning bro|gm bro|morning bro)$/.test(normalized)) {
     if (/mrng|morning|gm/.test(normalized)) {
-      return "Gud mrng Eswar 😌\nPROMETHEUS online. Slow start is fine — just don’t disappear from your own day.";
+      return "Good morning, Sir 😌\nPROMETHEUS online.";
     }
-    return "Hii Eswar 😌\nPROMETHEUS online.";
+    return "Hello, Sir 😌\nPROMETHEUS online.";
   }
   if (/^(is this eswar bro|is this eswar|are you eswar bro|am i eswar|this eswar bro)$/.test(normalized)) {
-    return "Yeah bro, it's you 😄\nOwner mode active.";
+    return "Yes, Sir.\nYou are Eswar B — my Creator and Owner.";
   }
   if (/^(nice|ok nice|cool|great)$/.test(normalized)) {
-    return "Hehe, clean then 😌\nI'm locked in.";
+    return "Clean, Sir 😌\nI'm locked in.";
   }
   if (/^(who are you|what are you)$/.test(normalized)) {
-    return "I'm PROMETHEUS — your personalised agent under AegisDesk.\nMemory mode is active for you.";
+    return "I'm PROMETHEUS — your personalised agent under AegisDesk.\nOwner mode is active, Sir.";
   }
   return undefined;
 }
@@ -215,12 +244,12 @@ function getDirectOwnerReply(text: string): string | undefined {
 function getDeterministicOwnerReply(text: string, intent: string): string | undefined {
   const normalized = text.toLowerCase().replace(/[?!.,]/g, "").trim();
   if (/problem solver.*emotional supporter|emotional supporter.*problem solver/.test(normalized)) {
-    return "Locked in, bro. Problem solver first, emotional supporter beside it. I’ll answer directly instead of circling you with questions.";
+    return "Locked in, Sir. Problem solver first, emotional supporter beside it. I’ll answer directly instead of circling you with questions.";
   }
   if (intent === "emotional_state" && /tired mind|nothing but a tired mind/.test(normalized)) {
     return [
-      "Yeah bro, tired mind mode.",
-      "Don’t force heavy thinking right now.",
+      "Understood, Sir.",
+      "Then we keep today light first.",
       "",
       "Do the refresh first — water, face wash, small reset.",
       "Then come back as the problem solver. I’ll keep the emotional supporter role beside it 😌"

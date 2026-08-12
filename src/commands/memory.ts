@@ -29,6 +29,8 @@ export async function memoryCommand(ctx: Context, config: Pick<AppConfig, "owner
     if (summary) {
       await ctx.reply([
         `Memory storage: ${summary.storage === "supabase" ? "Supabase" : "JSON"}`,
+        "Owner identity: verified",
+        "Address mode: Sir",
         `Owner memories: ${summary.ownerMemories}`,
         `User memories: ${summary.userMemories}`,
         `Trusted contacts: ${summary.trustedContacts}`,

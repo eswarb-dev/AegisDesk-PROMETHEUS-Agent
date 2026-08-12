@@ -83,7 +83,8 @@ export const defaultEswarMemoryData: EswarMemory = {
     bot_name: "PROMETHEUS",
     system_name: "AEGISDESK // AGENT SYSTEM",
     relationship: "Personalised Agent to Eswar B",
-    telegram_role: "conversational interface for PROMETHEUS"
+    telegram_role: "conversational interface for PROMETHEUS",
+    official_email: "prometheus.inference@gmail.com"
   },
   projects: [],
   people: [],

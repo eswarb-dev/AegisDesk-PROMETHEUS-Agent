@@ -257,6 +257,47 @@ set
   review_required = excluded.review_required,
   updated_at = now();
 
+insert into memory_items (
+  owner_telegram_user_id,
+  subject_type,
+  subject_key,
+  memory_type,
+  content,
+  summary,
+  visibility,
+  allowed_contacts,
+  source,
+  confidence,
+  sensitivity,
+  review_required
+)
+values (
+  'owner',
+  'owner',
+  'prometheus_official_email',
+  'identity',
+  'PROMETHEUS official email address is prometheus.inference@gmail.com',
+  'PROMETHEUS official email address is prometheus.inference@gmail.com',
+  'public',
+  '{}',
+  'manual',
+  1.0,
+  'low',
+  false
+)
+on conflict (subject_type, subject_key) do update
+set
+  memory_type = excluded.memory_type,
+  content = excluded.content,
+  summary = excluded.summary,
+  visibility = excluded.visibility,
+  allowed_contacts = excluded.allowed_contacts,
+  source = excluded.source,
+  confidence = excluded.confidence,
+  sensitivity = excluded.sensitivity,
+  review_required = excluded.review_required,
+  updated_at = now();
+
 create table if not exists memory_audit_logs (
   id uuid primary key default gen_random_uuid(),
   actor_telegram_user_id text,

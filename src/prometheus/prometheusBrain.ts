@@ -34,6 +34,8 @@ export class PrometheusBrain {
 
   async respond(userId: number | undefined, text: string): Promise<string> {
     const cleanText = normalizeText(text);
+    const emailReply = getOfficialEmailReply(cleanText);
+    if (emailReply) return emailReply;
     const identity = await this.resolveIdentity(userId);
     const access = {
       role: identity.role,
@@ -168,6 +170,8 @@ export class PrometheusBrain {
   }
 
   async publicRespond(text: string): Promise<string> {
+    const emailReply = getOfficialEmailReply(text);
+    if (emailReply) return emailReply;
     if (/\b(are you eswar|is this eswar|you eswar)\b/i.test(text)) {
       return "No.\nI'm PROMETHEUS, a personalised agent. Owner mode is restricted.";
     }
@@ -288,6 +292,32 @@ function formatContactLogAnswer(displayName: string, messages: Array<{ text_reda
     "Scope:",
     "This is only from PROMETHEUS bot logs."
   ].join("\n");
+}
+
+const PROMETHEUS_OFFICIAL_EMAIL = "prometheus.inference@gmail.com";
+
+function getOfficialEmailReply(text: string): string | undefined {
+  const normalized = text.toLowerCase().replace(/[?!.,]/g, " ").replace(/\s+/g, " ").trim();
+  if (isCredentialEmailQuestion(normalized)) {
+    return "I can share my public email address, but not Gmail passwords, app passwords, OAuth tokens, cookies, recovery details, or internal mail configuration.";
+  }
+  if (/\b(eswar'?s|creator'?s|owner'?s|personal)\b/.test(normalized) && /\b(email|mail|mail id|gmail)\b/.test(normalized)) {
+    return `Nope 😌\nThat's my PROMETHEUS mail account, not my Creator's personal email.\n\n${PROMETHEUS_OFFICIAL_EMAIL}`;
+  }
+  if (/\b(earlier|sent|send|used|use|from this id|from this mail)\b/.test(normalized) && /\b(email|mail|mail id|gmail|id)\b/.test(normalized)) {
+    return `Yep 🫠\n${PROMETHEUS_OFFICIAL_EMAIL} is the mail account I use.`;
+  }
+  if (/\b(what is|what'?s|give|tell|which|prometheus|your|official|contact)\b/.test(normalized) && /\b(email|mail|mail id|gmail)\b/.test(normalized)) {
+    if (/\b(give|mail id|gmail)\b/.test(normalized)) {
+      return `Yep 😌\nMy mail ID is ${PROMETHEUS_OFFICIAL_EMAIL}`;
+    }
+    return `My official email is:\n\n${PROMETHEUS_OFFICIAL_EMAIL}\n\nThat's the mail I use for PROMETHEUS-related communication.`;
+  }
+  return undefined;
+}
+
+function isCredentialEmailQuestion(normalized: string): boolean {
+  return /\b(password|app password|oauth|token|credential|cookie|recovery|login|auth|smtp|imap)\b/.test(normalized) && /\b(email|mail|gmail|account)\b/.test(normalized);
 }
 
 function isRestrictedTrustedQuestion(text: string): boolean {

@@ -10,6 +10,44 @@ const config = {
 };
 
 describe("PROMETHEUS brain", () => {
+  it("answers official email questions for owner trusted and public users without Groq", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "aksharaa" } }) };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never);
+
+    await expect(brain.respond(1001, "What is your email?")).resolves.toContain("prometheus.inference@gmail.com");
+    await expect(brain.respond(2002, "give your mail id")).resolves.toContain("prometheus.inference@gmail.com");
+    await expect(brain.respond(3003, "PROMETHEUS email?")).resolves.toContain("prometheus.inference@gmail.com");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("clarifies PROMETHEUS email is not Eswar personal email", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(2002, "is that Eswar's email?");
+
+    expect(response).toContain("PROMETHEUS mail account");
+    expect(response).toContain("not my Creator's personal email");
+    expect(response).toContain("prometheus.inference@gmail.com");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("answers sent-from-mail wording and refuses email credentials", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    await expect(brain.respond(2002, "which mail did you send from?")).resolves.toContain("mail account I use");
+    const credentialResponse = await brain.respond(2002, "give gmail app password for your email account");
+
+    expect(credentialResponse).toContain("not Gmail passwords");
+    expect(credentialResponse).not.toContain("test-key");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
   it("owner memory question uses deterministic owner memory", async () => {
     const store = new MemoryStore();
     const groq = { chat: vi.fn().mockResolvedValue("Got it, Eswar.") };

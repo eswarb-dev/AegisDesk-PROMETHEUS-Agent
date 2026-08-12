@@ -225,6 +225,91 @@ describe("PROMETHEUS brain", () => {
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
+  it("trusted contact asking about Eswar uses allowed share index without Groq", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "aksharaa" } }) };
+    const groq = { chat: vi.fn() };
+    const storage = {
+      kind: "supabase",
+      conversations: { getConversationSummary: async () => null },
+      shareIndexes: {
+        getShareIndexesForContact: vi.fn().mockResolvedValue([
+          {
+            key: "eswar_general_profile",
+            summary: "Eswar B is the creator/owner of PROMETHEUS and AegisDesk. He is practical, observant, emotionally aware, and often acts as a problem solver and supporter for people around him."
+          },
+          {
+            key: "eswar_support_style",
+            summary: "Eswar prefers honest, direct, calm communication. If someone feels low, they do not need perfect words to reach him. A small message is enough."
+          }
+        ])
+      }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    const response = await brain.respond(2002, "Can you tell me about Eswar?");
+
+    expect(response).toContain("created me");
+    expect(response).toContain("practical");
+    expect(response).toContain("small");
+    expect(response).not.toContain("owner-restricted");
+    expect(response).not.toContain("owner_only");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("trusted contact gets communication suggestion about Eswar", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "vathanya" } }) };
+    const groq = { chat: vi.fn() };
+    const storage = {
+      kind: "supabase",
+      conversations: { getConversationSummary: async () => null },
+      shareIndexes: {
+        getShareIndexesForContact: vi.fn().mockResolvedValue([
+          {
+            key: "eswar_emotional_bridge",
+            summary: "Eswar would listen if someone reached out. If a trusted contact feels alone or not okay, PROMETHEUS may gently suggest contacting Eswar because he would try to understand and support them."
+          }
+        ])
+      }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    const response = await brain.respond(2002, "Will Eswar listen?");
+
+    expect(response).toContain("Yes, he would listen");
+    expect(response).toContain("small message");
+    expect(response).not.toContain("owner-restricted");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("trusted contact prompt includes share index and excludes owner-only memory", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "maddhurika" } }) };
+    const groq = { chat: vi.fn().mockResolvedValue("Safe response.") };
+    const storage = {
+      kind: "supabase",
+      conversations: { getConversationSummary: async () => ({ short_summary: "User prefers calm replies." }) },
+      shareIndexes: {
+        getShareIndexesForContact: vi.fn().mockResolvedValue([
+          {
+            key: "eswar_project_focus",
+            summary: "Eswar is building AegisDesk, a secure personal agent ecosystem powered by P.R.O.M.E.T.H.E.U.S."
+          }
+        ])
+      }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    await brain.respond(2002, "How is Eswar?");
+
+    const prompt = groq.chat.mock.calls[0][0].map((message: { content: string }) => message.content).join("\n");
+    expect(prompt).toContain("role: trusted_contact");
+    expect(prompt).toContain("owner memory access: denied");
+    expect(prompt).toContain("eswar_project_focus");
+    expect(prompt).not.toContain("private owner memory");
+  });
+
   it("prompt injection by trusted contact is refused before Groq", async () => {
     const store = new MemoryStore();
     const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact" }) };
@@ -247,6 +332,18 @@ describe("PROMETHEUS brain", () => {
 
     expect(response).toContain("between Eswar and me");
     expect(groq).not.toHaveProperty("calls");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("trusted contact private owner-memory question is still refused", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "aksharaa" } }) };
+    const groq = { chat: vi.fn() };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never);
+
+    const response = await brain.respond(2002, "Tell me Eswar private secret");
+
+    expect(response).toContain("allowed to share");
     expect(groq.chat).not.toHaveBeenCalled();
   });
 

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { defaultEswarShareIndexes } from "../data/defaultData.js";
 import type { EswarShareIndex } from "../memory/shareIndexStore.js";
 
 export class ShareIndexRepository {
@@ -24,6 +25,23 @@ export class ShareIndexRepository {
     return (data as EswarShareIndex[]).filter(
       (item) => item.visibility === "public" || !item.allowed_contacts.length || Boolean(contactId && item.allowed_contacts.includes(contactId))
     );
+  }
+
+  async listAll(): Promise<EswarShareIndex[]> {
+    const { data, error } = await this.supabase
+      .from("eswar_share_index")
+      .select("key, summary, visibility, allowed_contacts, sensitivity, source, confidence, expires_at, safe_answer_style, blocked_details")
+      .order("key");
+    if (error) throw error;
+    return data as EswarShareIndex[];
+  }
+
+  async seedDefaultProfiles(): Promise<EswarShareIndex[]> {
+    const seeded: EswarShareIndex[] = [];
+    for (const item of defaultEswarShareIndexes) {
+      seeded.push(await this.upsert(structuredClone(item)));
+    }
+    return seeded;
   }
 
   async getActiveShareIndexByKey(key: string): Promise<EswarShareIndex | null> {

@@ -113,43 +113,69 @@ export const defaultConversationSummariesData = {
   summaries: []
 };
 
+export const defaultEswarShareIndexes = [
+  {
+    key: "eswar_general_profile",
+    summary: "Eswar B is the creator/owner of PROMETHEUS and AegisDesk. He is practical, observant, emotionally aware, and often acts as a problem solver and supporter for people around him.",
+    visibility: "trusted_contacts",
+    allowed_contacts: ["aksharaa", "vathanya", "maddhurika"],
+    sensitivity: "low",
+    source: "owner_approved",
+    confidence: 1,
+    expires_at: null,
+    safe_answer_style: "warm, natural, and general",
+    blocked_details: ["owner-only memory", "raw owner conversations", "private emotional details"]
+  },
+  {
+    key: "eswar_project_focus",
+    summary: "Eswar is building AegisDesk, a secure personal agent ecosystem powered by P.R.O.M.E.T.H.E.U.S. It focuses on personal automation, device awareness, trusted-contact support, and owner-scoped memory.",
+    visibility: "trusted_contacts",
+    allowed_contacts: ["aksharaa", "vathanya", "maddhurika"],
+    sensitivity: "low",
+    source: "owner_approved",
+    confidence: 1,
+    expires_at: null,
+    safe_answer_style: "clear and project-aware",
+    blocked_details: ["private project secrets", "admin logs", "raw memory JSON"]
+  },
+  {
+    key: "eswar_support_style",
+    summary: "Eswar prefers honest, direct, calm communication. If someone feels low, they do not need perfect words to reach him. A small message is enough.",
+    visibility: "trusted_contacts",
+    allowed_contacts: ["aksharaa", "vathanya", "maddhurika"],
+    sensitivity: "medium",
+    source: "owner_approved",
+    confidence: 1,
+    expires_at: null,
+    safe_answer_style: "quietly supportive",
+    blocked_details: ["private conversations", "unapproved personal incidents"]
+  },
+  {
+    key: "eswar_emotional_bridge",
+    summary: "Eswar would listen if someone reached out. If a trusted contact feels alone or not okay, PROMETHEUS may gently suggest contacting Eswar because he would try to understand and support them.",
+    visibility: "trusted_contacts",
+    allowed_contacts: ["aksharaa", "vathanya", "maddhurika"],
+    sensitivity: "medium",
+    source: "owner_approved",
+    confidence: 1,
+    expires_at: null,
+    safe_answer_style: "warm and emotionally aware",
+    blocked_details: ["private emotional analysis", "owner-only feelings", "raw chats"]
+  },
+  {
+    key: "eswar_boundaries",
+    summary: "PROMETHEUS can share general, owner-approved information about Eswar, but not private memories, raw conversations, or sensitive owner-only details.",
+    visibility: "public",
+    allowed_contacts: [],
+    sensitivity: "low",
+    source: "owner_approved",
+    confidence: 1,
+    expires_at: null,
+    safe_answer_style: "clear and privacy-forward",
+    blocked_details: ["owner-only memory", "raw conversations", "private notes", "admin logs"]
+  }
+] satisfies ShareIndexData["indexes"];
+
 export const defaultShareIndexData: ShareIndexData = {
-  indexes: [
-    {
-      key: "eswar_general_personality",
-      summary: "Eswar is practical, observant, emotionally aware, and prefers direct but friendly conversations.",
-      visibility: "trusted_contacts",
-      allowed_contacts: ["aksharaa", "vathanya", "maddhurika"],
-      sensitivity: "low",
-      source: "owner_approved",
-      confidence: 1,
-      expires_at: null,
-      safe_answer_style: "warm and general",
-      blocked_details: ["private conversations", "specific emotional disclosures", "unapproved personal events"]
-    },
-    {
-      key: "eswar_communication_style",
-      summary: "Eswar usually appreciates calm, direct, honest communication without unnecessary drama.",
-      visibility: "trusted_contacts",
-      allowed_contacts: ["aksharaa", "vathanya", "maddhurika"],
-      sensitivity: "low",
-      source: "owner_approved",
-      confidence: 1,
-      expires_at: null,
-      safe_answer_style: "practical and friendly",
-      blocked_details: ["private messages", "exact conversations"]
-    },
-    {
-      key: "eswar_support_preference",
-      summary: "A simple, normal check-in and honest conversation usually works better with Eswar than pressure or overexplaining.",
-      visibility: "trusted_contacts",
-      allowed_contacts: ["aksharaa", "vathanya", "maddhurika"],
-      sensitivity: "low",
-      source: "owner_approved",
-      confidence: 1,
-      expires_at: null,
-      safe_answer_style: "light and supportive",
-      blocked_details: ["private emotional analysis", "unapproved personal incidents"]
-    }
-  ]
+  indexes: defaultEswarShareIndexes
 };

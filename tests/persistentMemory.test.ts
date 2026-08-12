@@ -112,4 +112,17 @@ describe("Eswar share index", () => {
     expect(shared.visibility).toBe("trusted_contacts");
     expect(shared.allowed_contacts).toContain("vathanya");
   });
+
+  it("seeds README-derived Eswar share profiles", async () => {
+    const store = await shareStore({ indexes: [] });
+
+    await store.seedDefaultProfiles();
+    const allowed = await store.listAllowed("trusted_contact", "aksharaa");
+    const publicItems = await store.listAllowed("user", null);
+
+    expect(allowed.map((item) => item.key)).toContain("eswar_general_profile");
+    expect(allowed.map((item) => item.key)).toContain("eswar_project_focus");
+    expect(allowed.map((item) => item.key)).toContain("eswar_emotional_bridge");
+    expect(publicItems.map((item) => item.key)).toEqual(["eswar_boundaries"]);
+  });
 });

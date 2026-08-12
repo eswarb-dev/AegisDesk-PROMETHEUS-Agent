@@ -4,6 +4,7 @@ import { contactsCommand } from "../src/commands/contacts.js";
 import { helpCommand } from "../src/commands/help.js";
 import { memoryCommand } from "../src/commands/memory.js";
 import { pingCommand } from "../src/commands/ping.js";
+import { shareindexCommand } from "../src/commands/shareindex.js";
 import { startCommand } from "../src/commands/start.js";
 import { tellCommand } from "../src/commands/tell.js";
 import { trustCommand } from "../src/commands/trust.js";
@@ -212,6 +213,51 @@ describe("PROMETHEUS commands", () => {
     };
     await trustCommand(replaceCtx, config, { approve: async () => undefined } as never, replaceStorage as never);
     expect(replaceCtx.replies[0]).toContain("/trust --replace 123 vathanya");
+  });
+
+  it("/shareindex seed creates README-derived Eswar profile items", async () => {
+    const ctx = createMockContext({ userId: 1001, text: "/shareindex seed" });
+    const storage = {
+      kind: "supabase",
+      shareIndexes: {
+        seedDefaultProfiles: vi.fn().mockResolvedValue([
+          { key: "eswar_general_profile", visibility: "trusted_contacts", sensitivity: "low" },
+          { key: "eswar_project_focus", visibility: "trusted_contacts", sensitivity: "low" },
+          { key: "eswar_support_style", visibility: "trusted_contacts", sensitivity: "medium" }
+        ])
+      }
+    };
+
+    await shareindexCommand(ctx, config, storage as never);
+
+    expect(storage.shareIndexes.seedDefaultProfiles).toHaveBeenCalledOnce();
+    expect(ctx.replies[0]).toContain("Eswar share index seeded");
+    expect(ctx.replies[0]).toContain("eswar_general_profile");
+    expect(ctx.replies[0]).toContain("eswar_support_style");
+  });
+
+  it("/shareindex preview shows allowed items for a trusted contact", async () => {
+    const ctx = createMockContext({ userId: 1001, text: "/shareindex preview aksharaa" });
+    const storage = {
+      kind: "supabase",
+      shareIndexes: {
+        getShareIndexesForContact: vi.fn().mockResolvedValue([
+          {
+            key: "eswar_general_profile",
+            summary: "Eswar B is the creator/owner of PROMETHEUS and AegisDesk.",
+            visibility: "trusted_contacts",
+            sensitivity: "low"
+          }
+        ])
+      }
+    };
+
+    await shareindexCommand(ctx, config, storage as never);
+
+    expect(storage.shareIndexes.getShareIndexesForContact).toHaveBeenCalledWith("aksharaa");
+    expect(ctx.replies[0]).toContain("Share preview for aksharaa");
+    expect(ctx.replies[0]).toContain("eswar_general_profile");
+    expect(ctx.replies[0]).toContain("creator/owner");
   });
 
   it("/whoami returns Telegram ID and owner match", async () => {

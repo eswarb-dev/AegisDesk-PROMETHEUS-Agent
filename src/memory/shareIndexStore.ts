@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { MemoryVisibility } from "./memoryTypes.js";
-import { defaultShareIndexData } from "../data/defaultData.js";
+import { defaultEswarShareIndexes, defaultShareIndexData } from "../data/defaultData.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../data");
@@ -56,6 +56,20 @@ export class ShareIndexStore {
       if (item.visibility !== "trusted_contacts" && item.visibility !== "public") return false;
       return !item.allowed_contacts.length || Boolean(contactId && item.allowed_contacts.includes(contactId));
     });
+  }
+
+  async seedDefaultProfiles(): Promise<EswarShareIndex[]> {
+    const data = await this.load();
+    for (const seeded of defaultEswarShareIndexes) {
+      const existing = data.indexes.find((item) => item.key === seeded.key);
+      if (existing) {
+        Object.assign(existing, structuredClone(seeded));
+      } else {
+        data.indexes.push(structuredClone(seeded));
+      }
+    }
+    await this.save(data);
+    return defaultEswarShareIndexes;
   }
 
   async addState(summary: string): Promise<EswarShareIndex> {

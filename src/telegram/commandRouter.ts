@@ -62,6 +62,6 @@ export function registerCommands(
   bot.command("send", (ctx) => tellCommand(ctx, config, contacts, storage));
   bot.command("privacy", privacyCommand);
   bot.command("forgetme", (ctx) => forgetmeCommand(ctx, storage));
-  bot.command("shareindex", (ctx) => shareindexCommand(ctx, config));
+  bot.command("shareindex", (ctx) => shareindexCommand(ctx, config, storage));
   bot.command("state", (ctx) => stateCommand(ctx, config));
 }

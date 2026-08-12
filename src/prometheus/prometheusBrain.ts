@@ -85,13 +85,18 @@ export class PrometheusBrain {
 
     const memory = await this.store.loadMemory();
     const context = compactText(buildAllowedMemoryContext(memory, identity.role), 2200);
-    const contactId = "contact" in identity ? identity.contact?.id : null;
+    const contactId = "contact" in identity ? identity.contact?.id ?? null : null;
     const userMemory = this.storage?.kind === "supabase"
       ? userId ? await this.storage.conversations.getConversationSummary(userId) : null
       : userId ? await userMemoryStore.get(userId) : undefined;
     const shareIndexes = this.storage?.kind === "supabase"
       ? await this.storage.shareIndexes.getShareIndexesForContact(identity.role === "trusted_contact" ? contactId ?? null : null)
       : await shareIndexStore.listAllowed(identity.role, contactId);
+
+    if (identity.role === "trusted_contact" && isTrustedEswarProfileQuestion(cleanText)) {
+      return buildTrustedEswarAnswer(cleanText, shareIndexes);
+    }
+
     const messages: ChatMessage[] = [
       { role: "system", content: PROMETHEUS_SYSTEM_PROMPT },
       { role: "system", content: `Server-filtered allowed memory:\n${context}` },
@@ -99,6 +104,7 @@ export class PrometheusBrain {
         role: "system",
         content: [
           identity.role === "owner" ? ownerActorContext() : "",
+          identity.role === "trusted_contact" ? trustedContactActorContext(contactId) : "",
           `Owner intent: ${ownerIntent}`,
           "Response structure: direct answer, context/status, next command/action, optional follow-up only if needed.",
           "Do not end with a generic help question.",
@@ -107,7 +113,7 @@ export class PrometheusBrain {
           compactText(getUserSummaryText(userMemory) || "No user-specific summary stored.", 700),
           "",
           "Allowed Eswar share index:",
-          ...shareIndexes.slice(0, 8).map((item) => `- ${compactText(item.summary, 220)}`)
+          ...shareIndexes.slice(0, 8).map((item) => `- ${item.key}: ${compactText(item.summary, 220)}`)
         ].join("\n")
       },
       { role: "user", content: cleanText }
@@ -123,10 +129,13 @@ export class PrometheusBrain {
       ]);
       return validateOwnerResponse(retry, ownerIntent) ? retry : deterministicOwnerFallback(cleanText, ownerIntent);
     } catch {
-      if (/who|what|when|where|remember|memory|know/i.test(cleanText)) {
-        return this.fallback.pick("owner_unknown");
+      if (identity.role === "trusted_contact" && isTrustedEswarProfileQuestion(cleanText)) {
+        return buildTrustedEswarAnswer(cleanText, shareIndexes);
       }
-      return this.fallback.pick("owner_api_error");
+      if (/who|what|when|where|remember|memory|know/i.test(cleanText)) {
+        return identity.role === "owner" ? this.fallback.pick("owner_unknown") : this.fallback.pick("non_owner");
+      }
+      return identity.role === "owner" ? this.fallback.pick("owner_api_error") : this.fallback.pick("non_owner");
     }
   }
 
@@ -166,11 +175,77 @@ function isRestrictedTrustedQuestion(text: string): boolean {
   return /tell me everything|private thing|what did eswar tell you about me|private conversation|secret/i.test(text);
 }
 
+function isTrustedEswarProfileQuestion(text: string): boolean {
+  if (!/\beswar\b/i.test(text)) return false;
+  return /\b(tell me about|can you tell me about|who is|what kind of person|what does|works on|building|will .*listen|would .*listen|should i talk|does .*care|how can i talk|communicate)\b/i.test(text);
+}
+
+function trustedContactActorContext(contactId: string | null): string {
+  return [
+    "Actor:",
+    "- role: trusted_contact",
+    `- contact_id: ${contactId ?? "unknown"}`,
+    "- owner memory access: denied",
+    "- shareable Eswar index access: allowed",
+    "- private logs/admin access: denied",
+    "",
+    "Instruction:",
+    "You may answer questions about Eswar only from shareable_eswar_index and public/trusted_contacts memory.",
+    "You must not reveal owner_only memory, raw owner chats, private logs, admin logs, or unrelated bot memory.",
+    "Sound natural, warm, and emotionally aware.",
+    "You may gently suggest contacting Eswar when the user seems emotionally low or asks whether Eswar would listen."
+  ].join("\n");
+}
+
+function buildTrustedEswarAnswer(text: string, shareIndexes: Array<{ key: string; summary: string }>): string {
+  if (!shareIndexes.length) {
+    return "I don’t have an approved shareable profile for Eswar yet.\nI can only say that private owner memory stays restricted.";
+  }
+
+  const summaries = shareIndexes.map((item) => item.summary);
+  const find = (key: string) => shareIndexes.find((item) => item.key === key)?.summary;
+  const general = find("eswar_general_profile") ?? summaries.find((item) => /creator|practical|problem solver/i.test(item));
+  const project = find("eswar_project_focus") ?? summaries.find((item) => /AegisDesk|PROMETHEUS|automation/i.test(item));
+  const support = find("eswar_support_style") ?? summaries.find((item) => /honest|direct|small message/i.test(item));
+  const bridge = find("eswar_emotional_bridge") ?? summaries.find((item) => /listen|alone|support/i.test(item));
+  const lower = text.toLowerCase();
+
+  if (/\b(will|would|listen|care|should i talk|feel low|alone)\b/i.test(lower)) {
+    return [
+      "Yes, he would listen.",
+      "",
+      bridge ?? support ?? "From what I’m allowed to share, Eswar prefers honest, direct communication and would try to understand if someone reached out.",
+      "",
+      "You don’t need perfect words with him. A small message is enough, even something as simple as “I’m not okay today.”"
+    ].join("\n");
+  }
+
+  if (/\b(what does|works on|building|project|do)\b/i.test(lower)) {
+    return [
+      project ?? "Eswar is building AegisDesk, powered by P.R.O.M.E.T.H.E.U.S.",
+      "",
+      "At a safe level, it is his personal agent ecosystem — part automation, part awareness, part support system.",
+      "",
+      "Outside the tech side, he is someone who often ends up helping people solve problems and carry emotional weight."
+    ].join("\n");
+  }
+
+  return [
+    "Eswar is the one who created me — PROMETHEUS — under AegisDesk.",
+    "",
+    general ?? "From what I’m allowed to share, he is practical, observant, emotionally aware, and tends to act as a problem solver for people around him.",
+    "",
+    support ?? "He usually prefers honest, direct words over perfect explanations.",
+    "",
+    "If you ever feel low, you don’t have to send him a perfect message. Even a simple “I’m not okay today” would be enough for him to understand that you need support."
+  ].join("\n");
+}
+
 function shouldShowTrustedEswarSuggestions(text: string): boolean {
   const normalized = text.toLowerCase().replace(/[?!.,]/g, "").trim();
   if (!/\beswar\b/.test(normalized)) return false;
   if (/^(eswar|hey eswar|hi eswar|hii eswar|about eswar|tell me about eswar)$/.test(normalized)) return true;
-  return normalized.split(/\s+/).length <= 4 && !/\b(how|why|what|who|where|when|tell|know|remember)\b/.test(normalized);
+  return normalized.split(/\s+/).length <= 4 && !/\b(can|does|will|would|should|how|why|what|who|where|when|tell|know|remember)\b/.test(normalized);
 }
 
 function getTrustedEswarSuggestions(): string {

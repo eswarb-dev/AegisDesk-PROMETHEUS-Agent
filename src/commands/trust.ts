@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.js";
 import { isAllowedContactId, TrustedContactService } from "../contacts/trustedContactService.js";
 import { isOwner } from "../memory/ownerMemory.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
+import { registerTrustedContactCommands } from "../telegram/commandMenu.js";
 
 export async function trustCommand(
   ctx: Context,
@@ -15,7 +16,10 @@ export async function trustCommand(
     return;
   }
   const text = (ctx.message as { text?: string } | undefined)?.text ?? "";
-  const [, userIdText, contactId] = text.trim().split(/\s+/);
+  const parts = text.trim().split(/\s+/);
+  const replace = parts[1] === "--replace";
+  const userIdText = replace ? parts[2] : parts[1];
+  const contactId = replace ? parts[3] : parts[2];
   const telegramUserId = Number(userIdText);
   if (!Number.isInteger(telegramUserId) || !isAllowedContactId(contactId)) {
     await ctx.reply("Usage: /trust <telegram_user_id> <aksharaa|vathanya|maddhurika>");
@@ -23,8 +27,10 @@ export async function trustCommand(
   }
 
   try {
+    const existingContact = storage?.kind === "supabase" ? await storage.contacts.findByContactId(contactId) : undefined;
+    const wasAlreadyLinked = existingContact?.telegram_user_id === telegramUserId && existingContact.enabled;
     const contact = storage?.kind === "supabase"
-      ? await storage.contacts.approve(telegramUserId, contactId)
+      ? await storage.contacts.link(telegramUserId, contactId, replace)
       : await service.approve(telegramUserId, contactId);
     if (storage?.kind === "supabase") {
       await storage.audit.writeAuditLog({
@@ -35,14 +41,18 @@ export async function trustCommand(
         safe_description: `Approved trusted contact ${contact.id}`
       });
     }
+    if (contact.chat_id != null) {
+      await registerTrustedContactCommands(ctx.telegram, contact.chat_id);
+    }
     await ctx.reply(
       [
-        "✅ Trusted contact approved",
+        wasAlreadyLinked ? `✅ ${contact.name} is already linked` : "✅ Trusted contact approved",
         "",
         `Name: ${contact.name}`,
         "Role: trusted_contact",
         "Trusted memory access: enabled",
-        "Owner-only memory access: denied"
+        "Owner-only memory access: denied",
+        contact.chat_id != null ? "Telegram menu: trusted-contact commands updated" : "Telegram menu: ask them to send /start if the menu does not update"
       ].join("\n")
     );
   } catch (error) {

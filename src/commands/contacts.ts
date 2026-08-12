@@ -21,9 +21,18 @@ export async function contactsCommand(
 
   const data = storage?.kind === "supabase" ? await storage.contacts.list() : await service.list();
   const trusted = data.trusted_contacts.map((contact, index) => {
-    const status = contact.enabled ? "✅" : "⏳ Not linked";
-    const id = contact.telegram_user_id ?? "not linked";
-    return `${index + 1}. ${contact.name} ${status}\n   Telegram: ${usernameText(contact.username)}\n   ID: ${id}`;
+    const telegramId = contact.telegram_user_id ?? "not linked";
+    const chatId = contact.chat_id == null ? "missing" : "available";
+    const sendable = contact.enabled && contact.telegram_user_id != null && contact.chat_id != null;
+    return [
+      `${index + 1}. ${contact.name}`,
+      `   Telegram: ${usernameText(contact.username)}`,
+      `   Telegram ID: ${telegramId}`,
+      `   Chat ID: ${chatId}`,
+      `   Approved: ${contact.enabled ? "yes" : "no"}`,
+      `   Message enabled: ${sendable ? "yes" : "no"}`,
+      contact.telegram_user_id && contact.chat_id == null ? `   Action: Ask ${contact.name} to send /start again.` : null
+    ].filter(Boolean).join("\n");
   });
   const pending = data.pending_users.length
     ? data.pending_users.map((user) => `${usernameText(user.username)}\nID: ${user.telegram_user_id}\nName: ${user.display_name}`)

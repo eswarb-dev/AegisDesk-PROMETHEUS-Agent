@@ -11,6 +11,7 @@ import { isPrivateEswarQuestion, resolveAccessProfile } from "../security/access
 import { normalizeText } from "../utils/safeText.js";
 import { fallbackResponder, type FallbackResponder } from "./fallbackResponder.js";
 import { GroqClient, type ChatMessage } from "./groqClient.js";
+import { buildCapabilityResponse, classifyOwnerIntent, deterministicOwnerFallback, validateOwnerResponse } from "./ownerIntent.js";
 import { NON_OWNER_SYSTEM_PROMPT, PROMETHEUS_SYSTEM_PROMPT } from "./prometheusPersona.js";
 
 type ChatEngine = {
@@ -50,9 +51,16 @@ export class PrometheusBrain {
       return getTrustedEswarSuggestions();
     }
 
-    const directOwnerReply = getDirectOwnerReply(cleanText);
-    if (identity.role === "owner" && directOwnerReply) {
-      return directOwnerReply;
+    const ownerIntent = identity.role === "owner" ? classifyOwnerIntent(cleanText) : "unknown";
+    if (identity.role === "owner") {
+      const directOwnerReply = getDirectOwnerReply(cleanText);
+      if (directOwnerReply) return directOwnerReply;
+      if (ownerIntent === "capability_check") {
+        const capability = await buildCapabilityResponse(cleanText, this.storage);
+        if (capability) return capability;
+      }
+      const ownerDeterministic = getDeterministicOwnerReply(cleanText, ownerIntent);
+      if (ownerDeterministic) return ownerDeterministic;
     }
 
     const memory = await this.store.loadMemory();
@@ -70,6 +78,10 @@ export class PrometheusBrain {
       {
         role: "system",
         content: [
+          `Owner intent: ${ownerIntent}`,
+          "Response structure: direct answer, context/status, next command/action, optional follow-up only if needed.",
+          "Do not end with a generic help question.",
+          "",
           "User continuity memory:",
           compactText(getUserSummaryText(userMemory) || "No user-specific summary stored.", 700),
           "",
@@ -81,7 +93,14 @@ export class PrometheusBrain {
     ];
 
     try {
-      return await this.groq.chat(messages);
+      const first = await this.groq.chat(messages);
+      if (identity.role !== "owner" || validateOwnerResponse(first, ownerIntent)) return first;
+      const retry = await this.groq.chat([
+        ...messages,
+        { role: "assistant", content: first },
+        { role: "user", content: "Answer directly. Do not ask a follow-up unless required." }
+      ]);
+      return validateOwnerResponse(retry, ownerIntent) ? retry : deterministicOwnerFallback(cleanText, ownerIntent);
     } catch {
       if (/who|what|when|where|remember|memory|know/i.test(cleanText)) {
         return this.fallback.pick("owner_unknown");
@@ -175,7 +194,10 @@ function getUserSummaryText(memory: ConversationSummaryRow | UserMemoryRecord | 
 
 function getDirectOwnerReply(text: string): string | undefined {
   const normalized = text.toLowerCase().replace(/[?!.,]/g, "").trim();
-  if (/^(hi|hii|hello|hey|yo|sup)$/.test(normalized)) {
+  if (/^(hi|hii|hello|hey|yo|sup|gud mrng broo|gud mrng bro|good morning bro|gm bro|morning bro)$/.test(normalized)) {
+    if (/mrng|morning|gm/.test(normalized)) {
+      return "Gud mrng Eswar 😌\nPROMETHEUS online. Slow start is fine — just don’t disappear from your own day.";
+    }
     return "Hii Eswar 😌\nPROMETHEUS online.";
   }
   if (/^(is this eswar bro|is this eswar|are you eswar bro|am i eswar|this eswar bro)$/.test(normalized)) {
@@ -186,6 +208,23 @@ function getDirectOwnerReply(text: string): string | undefined {
   }
   if (/^(who are you|what are you)$/.test(normalized)) {
     return "I'm PROMETHEUS — your personalised agent under AegisDesk.\nMemory mode is active for you.";
+  }
+  return undefined;
+}
+
+function getDeterministicOwnerReply(text: string, intent: string): string | undefined {
+  const normalized = text.toLowerCase().replace(/[?!.,]/g, "").trim();
+  if (/problem solver.*emotional supporter|emotional supporter.*problem solver/.test(normalized)) {
+    return "Locked in, bro. Problem solver first, emotional supporter beside it. I’ll answer directly instead of circling you with questions.";
+  }
+  if (intent === "emotional_state" && /tired mind|nothing but a tired mind/.test(normalized)) {
+    return [
+      "Yeah bro, tired mind mode.",
+      "Don’t force heavy thinking right now.",
+      "",
+      "Do the refresh first — water, face wash, small reset.",
+      "Then come back as the problem solver. I’ll keep the emotional supporter role beside it 😌"
+    ].join("\n");
   }
   return undefined;
 }

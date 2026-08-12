@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.js";
 import { isAllowedContactId, TrustedContactService } from "../contacts/trustedContactService.js";
 import { isOwner } from "../memory/ownerMemory.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
+import { registerPublicCommandsForChat } from "../telegram/commandMenu.js";
 
 export async function untrustCommand(
   ctx: Context,
@@ -20,6 +21,9 @@ export async function untrustCommand(
     await ctx.reply("Usage: /untrust <aksharaa|vathanya|maddhurika>");
     return;
   }
+  const before = storage?.kind === "supabase"
+    ? (await storage.contacts.list()).trusted_contacts.find((contact) => contact.id === contactId)
+    : (await service.list()).trusted_contacts.find((contact) => contact.id === contactId);
   const contact = storage?.kind === "supabase" ? await storage.contacts.revoke(contactId) : await service.revoke(contactId);
   if (storage?.kind === "supabase") {
     await storage.audit.writeAuditLog({
@@ -29,6 +33,9 @@ export async function untrustCommand(
       target_id: contact.id,
       safe_description: `Revoked trusted contact ${contact.id}`
     });
+  }
+  if (before?.chat_id != null) {
+    await registerPublicCommandsForChat(ctx.telegram, before.chat_id);
   }
   await ctx.reply(`Trusted access revoked for ${contact.name}.`);
 }

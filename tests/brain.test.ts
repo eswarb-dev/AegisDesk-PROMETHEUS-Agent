@@ -35,6 +35,123 @@ describe("PROMETHEUS brain", () => {
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
+  it("owner morning greeting stays warm and short without generic help", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, "gud mrng broo");
+
+    expect(response).toContain("Gud mrng Eswar");
+    expect(response).not.toMatch(/how can i help|what's on your mind|assist you/i);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("owner role statement does not trigger a question loop", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, "problem solver and emotional supporter");
+
+    expect(response).toContain("Locked in");
+    expect(response).not.toMatch(/\?$/);
+    expect(response).not.toMatch(/what's on your mind|how can i help/i);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("owner tired emotional message gets support without ending in a question", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, "nothing but a tired mind");
+
+    expect(response).toContain("tired mind mode");
+    expect(response).toContain("water");
+    expect(response).not.toMatch(/\?$/);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("capability check returns direct trusted-contact state and tell syntax", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const storage = {
+      kind: "supabase",
+      contacts: {
+        list: async () => ({
+          trusted_contacts: [
+            { id: "aksharaa", name: "Aksharaa", telegram_user_id: 2002, enabled: true },
+            { id: "vathanya", name: "Vathanya", telegram_user_id: null, enabled: false },
+            { id: "maddhurika", name: "Maddhurika", telegram_user_id: null, enabled: false }
+          ],
+          pending_users: []
+        })
+      }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), undefined, storage as never);
+
+    const response = await brain.respond(1001, "check whether you can send text to my trusted contact");
+
+    expect(response).toContain("Yes bro");
+    expect(response).toContain("Aksharaa: linked");
+    expect(response).toContain("Vathanya: not linked");
+    expect(response).toContain("/tell aksharaa <message>");
+    expect(response).not.toMatch(/what message do you want/i);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("can you text Aksharaa checks linked contact and includes tell syntax", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const storage = {
+      kind: "supabase",
+      contacts: {
+        list: async () => ({
+          trusted_contacts: [
+            { id: "aksharaa", name: "Aksharaa", telegram_user_id: 2002, enabled: true },
+            { id: "vathanya", name: "Vathanya", telegram_user_id: null, enabled: false },
+            { id: "maddhurika", name: "Maddhurika", telegram_user_id: null, enabled: false }
+          ],
+          pending_users: []
+        })
+      }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), undefined, storage as never);
+
+    const response = await brain.respond(1001, "can you text Aksharaa");
+
+    expect(response).toContain("Aksharaa");
+    expect(response).toContain("/tell aksharaa <message>");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("can you tell Vathanya says unlinked when contact is not linked", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const storage = {
+      kind: "supabase",
+      contacts: {
+        list: async () => ({
+          trusted_contacts: [
+            { id: "aksharaa", name: "Aksharaa", telegram_user_id: 2002, enabled: true },
+            { id: "vathanya", name: "Vathanya", telegram_user_id: null, enabled: false },
+            { id: "maddhurika", name: "Maddhurika", telegram_user_id: null, enabled: false }
+          ],
+          pending_users: []
+        })
+      }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), undefined, storage as never);
+
+    const response = await brain.respond(1001, "can you tell Vathanya");
+
+    expect(response).toContain("Not yet bro");
+    expect(response).toContain("not linked");
+    expect(response).toContain("/start");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
   it("owner identity check gets owner-mode response", async () => {
     const store = new MemoryStore();
     const groq = { chat: vi.fn() };
@@ -150,5 +267,37 @@ describe("PROMETHEUS brain", () => {
     const response = await brain.respond(1001, "Tell me something useful");
 
     expect(response).toMatch(/fallback|Groq|Thinking engine/i);
+  });
+
+  it("Groq response ending with unnecessary generic question is regenerated", async () => {
+    const store = new MemoryStore();
+    const groq = {
+      chat: vi
+        .fn()
+        .mockResolvedValueOnce("Sure bro. What's on your mind?")
+        .mockResolvedValueOnce("Sure bro. I’ll keep it direct and answer-first.")
+    };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, "tell me something useful");
+
+    expect(response).toBe("Sure bro. I’ll keep it direct and answer-first.");
+    expect(groq.chat).toHaveBeenCalledTimes(2);
+  });
+
+  it("validator fallback handles repeated bad Groq responses", async () => {
+    const store = new MemoryStore();
+    const groq = {
+      chat: vi
+        .fn()
+        .mockResolvedValueOnce("What can I help you with?")
+        .mockResolvedValueOnce("How can I assist you today?")
+    };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, "random thought");
+
+    expect(response).toContain("Got it, Eswar");
+    expect(response).not.toMatch(/how can i help|assist you/i);
   });
 });

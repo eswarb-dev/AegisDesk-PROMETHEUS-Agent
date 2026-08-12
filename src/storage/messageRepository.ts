@@ -43,6 +43,14 @@ export class MessageRepository {
     return (data ?? []).reverse() as BotMessageRow[];
   }
 
+  async getMessagesByContactId(contactId: string, telegramUserId?: string | number | null, limit = 20): Promise<BotMessageRow[]> {
+    let query = this.supabase.from("bot_messages").select("*").order("created_at", { ascending: false }).limit(clampLimit(limit));
+    query = telegramUserId ? query.eq("telegram_user_id", String(telegramUserId)) : query.eq("contact_id", contactId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []).reverse() as BotMessageRow[];
+  }
+
   async getRecentMessagesByTelegramUserId(telegramUserId: string | number, limit = 20): Promise<BotMessageRow[]> {
     const { data, error } = await this.supabase
       .from("bot_messages")
@@ -62,6 +70,15 @@ export class MessageRepository {
       .ilike("text_redacted", `%${input.query}%`)
       .order("created_at", { ascending: false })
       .limit(clampLimit(input.limit));
+    if (error) throw error;
+    return (data ?? []).reverse() as BotMessageRow[];
+  }
+
+  async searchMessagesByContactId(input: { contactId: string; telegramUserId?: string | number | null; query: string; limit?: number }): Promise<BotMessageRow[]> {
+    let query = this.supabase.from("bot_messages").select("*").order("created_at", { ascending: false }).limit(clampLimit(input.limit));
+    query = input.telegramUserId ? query.eq("telegram_user_id", String(input.telegramUserId)) : query.eq("contact_id", input.contactId);
+    query = query.or(`text_redacted.ilike.%${input.query}%,text.ilike.%${input.query}%`);
+    const { data, error } = await query;
     if (error) throw error;
     return (data ?? []).reverse() as BotMessageRow[];
   }

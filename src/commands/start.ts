@@ -6,6 +6,7 @@ import { userMemoryStore } from "../memory/userMemoryStore.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
 import { isOwner } from "../memory/ownerMemory.js";
 import { displayName } from "../utils/safeText.js";
+import { refreshCommandMenuForUser } from "../telegram/commandMenu.js";
 
 export async function startCommand(
   ctx: Context,
@@ -33,7 +34,7 @@ export async function startCommand(
   });
   if (!owner && !existingTrustedContactId) await contacts?.registerPending(stored);
   if (storage?.kind === "supabase") {
-    await storage.users.createOrUpdateTelegramUser({
+    const user = await storage.users.createOrUpdateTelegramUser({
       telegram_user_id: String(from.id),
       chat_id: String(chat.id),
       username: from.username ?? null,
@@ -43,6 +44,7 @@ export async function startCommand(
       approved: owner || Boolean(existingTrustedContactId),
       memory_enabled: true
     });
+    await refreshCommandMenuForUser(ctx.telegram, user);
   } else {
     await userMemoryStore.upsertIdentity({
     telegram_user_id: from.id,
@@ -51,6 +53,11 @@ export async function startCommand(
     contact_id: null,
     display_name: stored.display_name,
     username: from.username ?? null
+    });
+    await refreshCommandMenuForUser(ctx.telegram, {
+      telegram_user_id: from.id,
+      chat_id: chat.id,
+      role: owner ? "owner" : "pending"
     });
   }
 

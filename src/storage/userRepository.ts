@@ -57,6 +57,10 @@ export class UserRepository {
     return data as TelegramUserRow | null;
   }
 
+  async getAnyTelegramUserById(telegramUserId: string | number): Promise<TelegramUserRow | null> {
+    return this.getTelegramUserById(telegramUserId);
+  }
+
   async updateLastSeen(telegramUserId: string | number): Promise<void> {
     const { error } = await this.supabase
       .from("telegram_users")

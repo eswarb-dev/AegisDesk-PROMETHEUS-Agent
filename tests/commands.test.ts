@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { aboutCommand } from "../src/commands/about.js";
 import { contactsCommand } from "../src/commands/contacts.js";
 import { helpCommand } from "../src/commands/help.js";
@@ -35,12 +35,13 @@ describe("PROMETHEUS commands", () => {
     expect(store.getTelegramUser(2002)?.role).toBe("pending");
   });
 
-  it("/help returns chatbot commands only", async () => {
+  it("/help returns public chatbot commands only by default", async () => {
     const ctx = createMockContext({ userId: 1001, text: "/help" });
 
     await helpCommand(ctx);
 
-    expect(ctx.replies[0]).toContain("/memory");
+    expect(ctx.replies[0]).toContain("/privacy");
+    expect(ctx.replies[0]).not.toContain("/memory");
     expect(ctx.replies[0]).not.toContain("/lock");
     expect(ctx.replies[0]).not.toContain("/shutdown");
   });
@@ -107,13 +108,33 @@ describe("PROMETHEUS commands", () => {
     expect(untrustCtx.replies[0]).toContain("Owner-only");
   });
 
+  it("/contacts shows telegram id, chat availability, and message enabled status", async () => {
+    const service = {
+      list: async () => ({
+        trusted_contacts: [
+          { name: "Vathanya", username: "v", telegram_user_id: 5559225697, chat_id: null, enabled: true },
+          { name: "Aksharaa", username: "a", telegram_user_id: 7832757601, chat_id: 7832757601, enabled: true }
+        ],
+        pending_users: []
+      })
+    };
+    const ctx = createMockContext({ userId: 1001, text: "/contacts" });
+
+    await contactsCommand(ctx, config, service as never);
+
+    expect(ctx.replies[0]).toContain("Telegram ID: 5559225697");
+    expect(ctx.replies[0]).toContain("Chat ID: missing");
+    expect(ctx.replies[0]).toContain("Message enabled: no");
+    expect(ctx.replies[0]).toContain("Message enabled: yes");
+  });
+
   it("/tell can only be executed by owner", async () => {
     const service = { sendMessage: async () => undefined };
     const ctx = createMockContext({ userId: 2002, text: "/tell aksharaa hello" });
 
     await tellCommand(ctx, config, service as never);
 
-    expect(ctx.replies[0]).toContain("Owner-only");
+    expect(ctx.replies[0]).toContain("owner-restricted");
   });
 
   it("/tell refuses contacts without chat_id", async () => {
@@ -126,7 +147,71 @@ describe("PROMETHEUS commands", () => {
 
     await tellCommand(ctx, config, service as never);
 
-    expect(ctx.replies[0]).toContain("no chat_id");
+    expect(ctx.replies[0]).toContain("chat_id");
+  });
+
+  it("/tell sends simple owner message through Supabase contact and stores outbound", async () => {
+    const ctx = createMockContext({ userId: 1001, text: "/tell vathanya 👋" });
+    const storage = createTellStorage({ chatId: 555, notificationEnabled: false });
+
+    await tellCommand(ctx, config, { sendMessage: async () => undefined } as never, storage as never);
+
+    expect(ctx.sentMessages[0]).toMatchObject({ chatId: 555 });
+    expect(ctx.sentMessages[0].text).toContain("👋");
+    expect(ctx.replies[0]).toContain("Sent to Vathanya");
+    expect(storage.messages.storeOutboundMessage).toHaveBeenCalled();
+  });
+
+  it("/send_message alias behaves like /tell", async () => {
+    const ctx = createMockContext({ userId: 1001, text: "/send_message vathanya hi" });
+    const storage = createTellStorage({ chatId: 555 });
+
+    await tellCommand(ctx, config, { sendMessage: async () => undefined } as never, storage as never);
+
+    expect(ctx.sentMessages[0].text).toContain("hi");
+    expect(ctx.replies[0]).toContain("Sent to Vathanya");
+  });
+
+  it("/tell explains missing chat_id and repairs from telegram_users when available", async () => {
+    const missingCtx = createMockContext({ userId: 1001, text: "/tell vathanya hi" });
+    const missingStorage = createTellStorage({ chatId: null });
+
+    await tellCommand(missingCtx, config, { sendMessage: async () => undefined } as never, missingStorage as never);
+    expect(missingCtx.replies[0]).toContain("chat_id is missing");
+
+    const repairedCtx = createMockContext({ userId: 1001, text: "/tell vathanya hi" });
+    const repairedStorage = createTellStorage({ chatId: 777, repaired: true });
+
+    await tellCommand(repairedCtx, config, { sendMessage: async () => undefined } as never, repairedStorage as never);
+    expect(repairedCtx.sentMessages[0]).toMatchObject({ chatId: 777 });
+  });
+
+  it("/trust reports already linked and replace instruction from Supabase", async () => {
+    const alreadyCtx = createMockContext({ userId: 1001, text: "/trust 5559225697 vathanya" });
+    const alreadyStorage = {
+      kind: "supabase",
+      contacts: {
+        findByContactId: async () => ({ telegram_user_id: 5559225697, enabled: true }),
+        link: async () => ({ id: "vathanya", name: "Vathanya", telegram_user_id: 5559225697, enabled: true, chat_id: 5559225697 })
+      },
+      audit: { writeAuditLog: async () => undefined }
+    };
+    await trustCommand(alreadyCtx, config, { approve: async () => undefined } as never, alreadyStorage as never);
+    expect(alreadyCtx.replies[0]).toContain("already linked");
+
+    const replaceCtx = createMockContext({ userId: 1001, text: "/trust 123 vathanya" });
+    const replaceStorage = {
+      kind: "supabase",
+      contacts: {
+        findByContactId: async () => ({ telegram_user_id: 5559225697, enabled: true }),
+        link: async () => {
+          throw new Error("vathanya is already linked to 5559225697.\nUse:\n/trust --replace 123 vathanya");
+        }
+      },
+      audit: { writeAuditLog: async () => undefined }
+    };
+    await trustCommand(replaceCtx, config, { approve: async () => undefined } as never, replaceStorage as never);
+    expect(replaceCtx.replies[0]).toContain("/trust --replace 123 vathanya");
   });
 
   it("/whoami returns Telegram ID and owner match", async () => {
@@ -140,3 +225,26 @@ describe("PROMETHEUS commands", () => {
     expect(ctx.replies[0]).toContain("Owner match: true");
   });
 });
+
+function createTellStorage(options: { chatId: number | null; notificationEnabled?: boolean; repaired?: boolean }) {
+  return {
+    kind: "supabase",
+    contacts: {
+      repairChatIdFromTelegramUser: async () => ({
+        id: "vathanya",
+        name: "Vathanya",
+        telegram_user_id: 5559225697,
+        chat_id: options.chatId,
+        username: "vathanya",
+        enabled: true,
+        permissions: {
+          receive_agent_messages: Boolean(options.notificationEnabled),
+          receive_wellbeing_updates: Boolean(options.notificationEnabled)
+        }
+      })
+    },
+    messages: {
+      storeOutboundMessage: vi.fn()
+    }
+  };
+}

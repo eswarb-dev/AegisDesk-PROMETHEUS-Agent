@@ -77,14 +77,73 @@ export class ContactRepository {
     return data ? toTrustedContact(data) : undefined;
   }
 
+  async findByContactId(contactId: ContactId): Promise<TrustedContact | undefined> {
+    const { data, error } = await this.supabase.from("trusted_contacts").select("*").eq("contact_id", contactId).maybeSingle();
+    if (error) throw error;
+    return data ? toTrustedContact(data) : undefined;
+  }
+
+  async repairChatIdFromTelegramUser(contactId: ContactId): Promise<TrustedContact | undefined> {
+    const contact = await this.findByContactId(contactId);
+    if (!contact?.telegram_user_id || contact.chat_id != null) return contact;
+    const { data: user, error: userError } = await this.supabase
+      .from("telegram_users")
+      .select("telegram_user_id, chat_id, username, display_name")
+      .eq("telegram_user_id", String(contact.telegram_user_id))
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user?.chat_id) return contact;
+    const { data, error } = await this.supabase
+      .from("trusted_contacts")
+      .update({
+        chat_id: String(user.chat_id),
+        username: user.username,
+        updated_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString()
+      })
+      .eq("contact_id", contactId)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return toTrustedContact(data);
+  }
+
   async approve(telegramUserId: string | number, contactId: ContactId): Promise<TrustedContact> {
+    return this.link(telegramUserId, contactId, false);
+  }
+
+  async link(telegramUserId: string | number, contactId: ContactId, replace: boolean): Promise<TrustedContact> {
+    const { data: existingContact, error: existingContactError } = await this.supabase
+      .from("trusted_contacts")
+      .select("*")
+      .eq("contact_id", contactId)
+      .maybeSingle();
+    if (existingContactError) throw existingContactError;
+    if (existingContact?.telegram_user_id === String(telegramUserId) && existingContact.approved) {
+      return toTrustedContact(existingContact);
+    }
+    if (existingContact?.telegram_user_id && existingContact.telegram_user_id !== String(telegramUserId) && !replace) {
+      throw new Error(`${contactId} is already linked to ${existingContact.telegram_user_id}.\nUse:\n/trust --replace ${telegramUserId} ${contactId}`);
+    }
     const { data: user, error: userError } = await this.supabase
       .from("telegram_users")
       .select("telegram_user_id, chat_id, username, display_name")
       .eq("telegram_user_id", String(telegramUserId))
       .maybeSingle();
     if (userError) throw userError;
-    if (!user) throw new Error("Telegram ID is not registered as pending. Ask them to run /start first.");
+    if (!user) throw new Error("Telegram ID is not registered. Ask them to run /start first.");
+    const { error: clearOldContactError } = await this.supabase
+      .from("trusted_contacts")
+      .update({
+        telegram_user_id: null,
+        chat_id: null,
+        approved: false,
+        notification_enabled: false,
+        updated_at: new Date().toISOString()
+      })
+      .eq("telegram_user_id", String(telegramUserId))
+      .neq("contact_id", contactId);
+    if (clearOldContactError) throw clearOldContactError;
 
     const { data, error } = await this.supabase
       .from("trusted_contacts")

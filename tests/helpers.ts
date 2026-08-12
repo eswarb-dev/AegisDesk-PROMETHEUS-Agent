@@ -6,8 +6,9 @@ export function createMockContext(options: {
   text?: string;
   username?: string;
   firstName?: string;
-}): Context & { replies: string[] } {
+}): Context & { replies: string[]; sentMessages: Array<{ chatId: number | string; text: string }> } {
   const replies: string[] = [];
+  const sentMessages: Array<{ chatId: number | string; text: string }> = [];
   return {
     from: {
       id: options.userId,
@@ -29,9 +30,16 @@ export function createMockContext(options: {
       text: options.text ?? ""
     },
     replies,
+    sentMessages,
     reply: async (text: string) => {
       replies.push(text);
       return undefined as never;
+    },
+    telegram: {
+      sendMessage: async (chatId: number | string, text: string) => {
+        sentMessages.push({ chatId, text });
+        return undefined as never;
+      }
     }
-  } as unknown as Context & { replies: string[] };
+  } as unknown as Context & { replies: string[]; sentMessages: Array<{ chatId: number | string; text: string }> };
 }

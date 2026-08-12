@@ -47,7 +47,10 @@ export async function logsCommand(ctx: Context, config: Pick<AppConfig, "ownerTe
     await ctx.reply("Unknown trusted contact. Allowed: aksharaa, vathanya, maddhurika.");
     return;
   }
-  const messages = await storage.messages.getRecentMessages({ contactId, limit: 20 });
+  const user = contactId ? await findUserForContact(storage, contactId) : null;
+  const messages = contactId
+    ? await storage.messages.getMessagesByContactId(contactId, user?.telegram_user_id, 20)
+    : await storage.messages.getRecentMessages({ limit: 20 });
   await safeAudit(ctx, storage, "admin.logs.view", contactId ?? null, contactId ? `Owner viewed ${contactId} bot logs` : "Owner viewed recent bot logs");
   await ctx.reply(messages.length ? formatMessages(contactId ? `${titleCase(contactId)} — recent PROMETHEUS logs` : "Recent PROMETHEUS bot activity", messages) : noMessages(contactId));
 }
@@ -63,7 +66,8 @@ export async function chatCommand(ctx: Context, config: Pick<AppConfig, "ownerTe
     await ctx.reply("Usage: /chat <aksharaa|vathanya|maddhurika> [limit]");
     return;
   }
-  const messages = await storage.messages.getRecentMessages({ contactId, limit: Number(limitText) || 20 });
+  const user = await findUserForContact(storage, contactId);
+  const messages = await storage.messages.getMessagesByContactId(contactId, user?.telegram_user_id, Number(limitText) || 20);
   await safeAudit(ctx, storage, "admin.chat.view", contactId, `Owner viewed ${contactId} bot conversation`);
   await ctx.reply(messages.length ? formatMessages(`${titleCase(contactId)} — latest bot conversation`, messages) : noMessages(contactId));
 }
@@ -80,7 +84,8 @@ export async function searchCommand(ctx: Context, config: Pick<AppConfig, "owner
     await ctx.reply("Usage: /search <aksharaa|vathanya|maddhurika> <query>");
     return;
   }
-  const messages = await storage.messages.searchMessages({ contactId, query, limit: 20 });
+  const user = await findUserForContact(storage, contactId);
+  const messages = await storage.messages.searchMessagesByContactId({ contactId, telegramUserId: user?.telegram_user_id, query, limit: 20 });
   await safeAudit(ctx, storage, "admin.logs.search", contactId, `Owner searched ${contactId} bot logs`);
   await ctx.reply(messages.length ? formatMessages(`${titleCase(contactId)} — PROMETHEUS log search`, messages) : `No PROMETHEUS bot log matches for ${titleCase(contactId)}.`);
 }
@@ -175,12 +180,13 @@ export async function answerOwnerLogQuestion(text: string, ctx: Context, config:
       await ctx.reply(`${titleCase(contactId)} is not linked to a Telegram ID yet, so I cannot verify their bot conversations.`);
       return true;
     }
-    const latest = await storage.messages.getLatestMessageForContact(contactId);
+    const latest = await storage.messages.getMessagesByContactId(contactId, user.telegram_user_id, 1).then((messages) => messages.at(-1) ?? null);
     await ctx.reply(latest ? `I checked my bot logs. Yes, ${titleCase(contactId)} talked to me inside this bot at ${formatTime(latest.created_at)}.\nLatest topic: ${(latest.text_redacted ?? latest.text ?? "").slice(0, 180)}` : `I checked my bot logs, Eswar. ${titleCase(contactId)} has not messaged PROMETHEUS yet inside this bot.`);
     return true;
   }
   if (/what did .*ask|show .*logs|last messages?/i.test(text)) {
-    const messages = await storage.messages.getRecentMessages({ contactId, limit: 10 });
+    const user = await findUserForContact(storage, contactId);
+    const messages = await storage.messages.getMessagesByContactId(contactId, user?.telegram_user_id, 10);
     await ctx.reply(messages.length ? formatMessages(`${titleCase(contactId)} — PROMETHEUS bot logs`, messages) : noMessages(contactId));
     return true;
   }

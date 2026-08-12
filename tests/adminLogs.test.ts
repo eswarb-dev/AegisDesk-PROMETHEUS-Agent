@@ -40,7 +40,12 @@ function createSupabaseStorage() {
         { telegram_user_id: "2002", chat_id: "2002", role: "trusted_contact", contact_id: "aksharaa", direction: "inbound", message_type: "text", text_redacted: "How is Eswar?", created_at: "2026-08-11T10:00:00Z" },
         { telegram_user_id: "2002", chat_id: "2002", role: "trusted_contact", contact_id: "aksharaa", direction: "outbound", message_type: "text", text_redacted: "I can only share what Eswar allowed.", created_at: "2026-08-11T10:01:00Z" }
       ],
+      getMessagesByContactId: async (contactId: string) => contactId === "aksharaa" ? [
+        { telegram_user_id: "2002", chat_id: "2002", role: "trusted_contact", contact_id: "aksharaa", direction: "inbound", message_type: "text", text_redacted: "How is Eswar?", created_at: "2026-08-11T10:00:00Z" },
+        { telegram_user_id: "2002", chat_id: "2002", role: "trusted_contact", contact_id: "aksharaa", direction: "outbound", message_type: "text", text_redacted: "I can only share what Eswar allowed.", created_at: "2026-08-11T10:01:00Z" }
+      ] : [],
       searchMessages: async () => [],
+      searchMessagesByContactId: async () => [],
       getLatestMessageForContact: async (contactId: string) => contactId === "aksharaa" ? { text_redacted: "How is Eswar?", created_at: "2026-08-11T10:00:00Z" } : null,
       getMessagesToday: async () => [],
       exportMessages: async () => [

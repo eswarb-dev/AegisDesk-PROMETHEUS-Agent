@@ -6,6 +6,7 @@ import { MemoryStore } from "../memory/memoryStore.js";
 import { PrometheusBrain } from "../prometheus/prometheusBrain.js";
 import { createStorageProvider } from "../storage/storageProvider.js";
 import { registerCommands } from "./commandRouter.js";
+import { registerDefaultCommands } from "./commandMenu.js";
 import { registerMessageRouter } from "./messageRouter.js";
 import { createMessageLoggingMiddleware } from "./messageLogging.js";
 import { createTelegramRateLimitMiddleware } from "./rateLimiter.js";
@@ -18,6 +19,7 @@ export function createBot(config: AppConfig, store: MemoryStore): Telegraf {
   const storage = createStorageProvider(config);
   const brain = new PrometheusBrain(config, store, undefined, undefined, contacts, storage);
 
+  void registerDefaultCommands(bot.telegram);
   bot.use(createTelegramSendQueueMiddleware());
   bot.use(createTelegramErrorBoundaryMiddleware());
   bot.use(createTelegramRateLimitMiddleware(config, contacts, storage));

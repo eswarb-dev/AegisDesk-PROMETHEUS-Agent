@@ -1,0 +1,72 @@
+import type { Telegram } from "telegraf";
+import type { BotCommand } from "telegraf/types";
+import type { UserRole } from "../memory/memoryTypes.js";
+import type { TelegramUserRow } from "../storage/userRepository.js";
+
+export const PUBLIC_COMMANDS: BotCommand[] = [
+  { command: "start", description: "Activate PROMETHEUS" },
+  { command: "help", description: "Show commands" },
+  { command: "about", description: "About PROMETHEUS" },
+  { command: "ping", description: "Check connectivity" },
+  { command: "privacy", description: "Memory/privacy policy" },
+  { command: "forgetme", description: "Delete stored PROMETHEUS memory" },
+  { command: "whoami", description: "Show Telegram ID and role" }
+];
+
+export const TRUSTED_CONTACT_COMMANDS: BotCommand[] = [
+  ...PUBLIC_COMMANDS,
+  { command: "supportoff", description: "Disable non-critical support memory" }
+];
+
+export const OWNER_COMMANDS: BotCommand[] = [
+  { command: "start", description: "Activate PROMETHEUS" },
+  { command: "help", description: "Show owner command groups" },
+  { command: "about", description: "About PROMETHEUS" },
+  { command: "ping", description: "Check connectivity" },
+  { command: "whoami", description: "Show Telegram ID and role" },
+  { command: "memory", description: "Memory status and controls" },
+  { command: "contacts", description: "Trusted contact panel" },
+  { command: "admin", description: "Owner admin/log command groups" },
+  { command: "support", description: "Trusted support events" }
+];
+
+export async function registerDefaultCommands(telegram: Telegram): Promise<void> {
+  if (!canSetCommands(telegram)) return;
+  await telegram.setMyCommands(PUBLIC_COMMANDS, { scope: { type: "default" } });
+}
+
+export async function registerOwnerCommands(telegram: Telegram, ownerChatId: string | number): Promise<void> {
+  if (!canSetCommands(telegram)) return;
+  await telegram.setMyCommands(OWNER_COMMANDS, { scope: { type: "chat", chat_id: Number(ownerChatId) } });
+}
+
+export async function registerTrustedContactCommands(telegram: Telegram, chatId: string | number): Promise<void> {
+  if (!canSetCommands(telegram)) return;
+  await telegram.setMyCommands(TRUSTED_CONTACT_COMMANDS, { scope: { type: "chat", chat_id: Number(chatId) } });
+}
+
+export async function registerPublicCommandsForChat(telegram: Telegram, chatId: string | number): Promise<void> {
+  if (!canSetCommands(telegram)) return;
+  await telegram.setMyCommands(PUBLIC_COMMANDS, { scope: { type: "chat", chat_id: Number(chatId) } });
+}
+
+export async function refreshCommandMenuForUser(
+  telegram: Telegram,
+  user: Pick<TelegramUserRow, "role" | "chat_id" | "telegram_user_id"> | { role: UserRole; chat_id?: string | number | null; telegram_user_id?: string | number }
+): Promise<void> {
+  const chatId = user.chat_id ?? user.telegram_user_id;
+  if (chatId == null) return;
+  if (user.role === "owner") {
+    await registerOwnerCommands(telegram, chatId);
+    return;
+  }
+  if (user.role === "trusted_contact") {
+    await registerTrustedContactCommands(telegram, chatId);
+    return;
+  }
+  await registerPublicCommandsForChat(telegram, chatId);
+}
+
+function canSetCommands(telegram: Telegram): boolean {
+  return typeof (telegram as { setMyCommands?: unknown } | undefined)?.setMyCommands === "function";
+}

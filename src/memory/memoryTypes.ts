@@ -22,6 +22,9 @@ export type PersistentMemoryItem = {
   content: string;
   visibility: MemoryVisibility;
   allowed_contacts: string[];
+  subject_contact_id?: string | null;
+  usable_when_chatting_with_subject?: boolean;
+  disclosable_to_subject?: boolean;
   source: "manual" | "conversation_summary" | "owner_approved";
   confidence: number;
   sensitivity: "low" | "medium" | "high";

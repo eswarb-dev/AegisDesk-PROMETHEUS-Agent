@@ -71,10 +71,22 @@ describe("Supabase repositories", () => {
     expect(query.eq).toHaveBeenCalledWith("visibility", "self_only");
   });
 
-  it("trusted contact can access owner_only memory through server-filtered role access", () => {
+  it("trusted contact cannot access generic owner_only memory through role filtering", () => {
     const supabase = { from: vi.fn(() => queryMock([])) };
     const repo = new MemoryRepository(supabase as never);
 
-    expect(repo.filterForRole([{ visibility: "owner_only" } as never], "trusted_contact")).toHaveLength(1);
+    expect(repo.filterForRole([{ visibility: "owner_only" } as never], "trusted_contact")).toHaveLength(0);
+  });
+
+  it("subject internal memory is scoped to the same contact and non-disclosable profile rows", async () => {
+    const supabase = { from: vi.fn(() => queryMock([{ subject_contact_id: "vathanya", visibility: "owner_only" }])) };
+    const repo = new MemoryRepository(supabase as never);
+
+    await expect(repo.getSubjectInternalMemories("vathanya")).resolves.toHaveLength(1);
+    const query = supabase.from.mock.results[0].value;
+    expect(query.eq).toHaveBeenCalledWith("subject_contact_id", "vathanya");
+    expect(query.eq).toHaveBeenCalledWith("visibility", "owner_only");
+    expect(query.eq).toHaveBeenCalledWith("usable_when_chatting_with_subject", true);
+    expect(query.eq).toHaveBeenCalledWith("disclosable_to_subject", false);
   });
 });

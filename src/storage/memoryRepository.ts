@@ -6,7 +6,10 @@ export type MemoryItemRow = Omit<PersistentMemoryItem, "id"> & {
   id?: string;
   subject_type: "owner" | "user" | "trusted_contact" | "share_index" | "conversation_summary";
   subject_key?: string | null;
+  subject_contact_id?: string | null;
   summary?: string | null;
+  usable_when_chatting_with_subject?: boolean;
+  disclosable_to_subject?: boolean;
 };
 
 export class MemoryRepository {
@@ -63,8 +66,21 @@ export class MemoryRepository {
   }
 
   async getTrustedVisibleMemories(contactId: string): Promise<MemoryItemRow[]> {
-    const memories = await this.getByVisibility(["owner_only", "trusted_contacts", "public"]);
+    const memories = await this.getByVisibility(["trusted_contacts", "public"]);
     return memories.filter((item) => !item.allowed_contacts.length || item.allowed_contacts.includes(contactId));
+  }
+
+  async getSubjectInternalMemories(contactId: string): Promise<MemoryItemRow[]> {
+    const { data, error } = await this.supabase
+      .from("memory_items")
+      .select("*")
+      .eq("subject_contact_id", contactId)
+      .eq("visibility", "owner_only")
+      .eq("usable_when_chatting_with_subject", true)
+      .eq("disclosable_to_subject", false)
+      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+    if (error) throw error;
+    return data as MemoryItemRow[];
   }
 
   async getPublicMemories(): Promise<MemoryItemRow[]> {

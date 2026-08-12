@@ -5,22 +5,29 @@ function toTrustedContact(row: Record<string, unknown>): TrustedContact {
   return {
     id: row.contact_id as ContactId,
     name: (row.display_name as string | null) ?? (row.contact_id as string),
+    relationship: (row.relationship as string | null) ?? null,
     telegram_user_id: row.telegram_user_id ? Number(row.telegram_user_id) : null,
     chat_id: row.chat_id ? Number(row.chat_id) : null,
     username: (row.username as string | null) ?? null,
     enabled: Boolean(row.approved),
     role: "trusted_contact",
     permissions: {
-      receive_agent_messages: Boolean(row.notification_enabled),
-      receive_wellbeing_updates: Boolean(row.notification_enabled),
-      ask_about_eswar: true,
-      access_trusted_memory: true,
+      receive_agent_messages: getPermission(row.permissions, "receive_agent_messages", Boolean(row.notification_enabled)),
+      receive_wellbeing_updates: getPermission(row.permissions, "receive_wellbeing_updates", Boolean(row.notification_enabled)),
+      ask_about_eswar: getPermission(row.permissions, "ask_about_eswar", true),
+      access_trusted_memory: getPermission(row.permissions, "access_trusted_memory", true),
       access_owner_memory: false
     },
     created_at: (row.created_at as string | null) ?? null,
     approved_at: (row.approved ? row.updated_at : null) as string | null,
     last_seen: (row.last_seen_at as string | null) ?? null
   };
+}
+
+function getPermission(permissions: unknown, key: string, fallback: boolean): boolean {
+  if (!permissions || typeof permissions !== "object") return fallback;
+  const value = (permissions as Record<string, unknown>)[key];
+  return typeof value === "boolean" ? value : fallback;
 }
 
 export class ContactRepository {

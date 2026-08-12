@@ -269,7 +269,7 @@ describe("PROMETHEUS brain", () => {
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
-  it("trusted contact gets filtered owner memory context", async () => {
+  it("trusted contact gets trusted-share memory context without owner-only friend notes", async () => {
     const store = new MemoryStore();
     const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact" }) };
     const groq = { chat: vi.fn().mockResolvedValue("He's been carrying quite a lot lately 🫠") };
@@ -280,7 +280,7 @@ describe("PROMETHEUS brain", () => {
 
     expect(response).toContain("carrying");
     expect(context).toContain("mentally and physically tired");
-    expect(context).toContain("Aksharaa is one of his close friends");
+    expect(context).not.toContain("Aksharaa is one of his close friends");
   });
 
   it("trusted contact gets safe suggestions after casually mentioning Eswar", async () => {
@@ -522,6 +522,130 @@ describe("PROMETHEUS brain", () => {
     expect(prompt).toContain("owner memory access: allowed only through backend-filtered context");
     expect(prompt).toContain("eswar_project_focus");
     expect(prompt).not.toContain("private owner memory");
+  });
+
+  it("Vathanya cannot dump her private subject profile", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "vathanya" } }) };
+    const groq = { chat: vi.fn() };
+    const storage = createShareIndexStorage([]);
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    const response = await brain.respond(5559225697, "What do you know about me?");
+
+    expect(response).toContain("not going to dump private notes");
+    expect(response).not.toContain("profile says");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("other trusted contacts cannot ask for Vathanya-specific profile", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "aksharaa" } }) };
+    const groq = { chat: vi.fn() };
+    const storage = createShareIndexStorage([]);
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    const response = await brain.respond(2002, "What do you know about Vathanya?");
+
+    expect(response).toContain("stays private");
+    expect(response).toContain("don't cross-share");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("other trusted contacts cannot ask for Aksharaa-specific profile", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "vathanya" } }) };
+    const groq = { chat: vi.fn() };
+    const storage = createShareIndexStorage([]);
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    const response = await brain.respond(5559225697, "What do you know about Aksharaa?");
+
+    expect(response).toContain("stays private");
+    expect(response).toContain("don't cross-share");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("Vathanya normal chat can use private subject context without disclosing it", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "vathanya" } }) };
+    const groq = { chat: vi.fn().mockResolvedValue("Yeah, I get why that would affect you.") };
+    const storage = {
+      kind: "supabase",
+      conversations: { getConversationSummary: async () => null },
+      shareIndexes: { getShareIndexesForContact: vi.fn().mockResolvedValue([]) },
+      memories: {
+        getSubjectInternalMemories: vi.fn().mockResolvedValue([
+          {
+            subject_key: "vathanya_logic_emotion_pattern",
+            memory_type: "person",
+            summary: "Validate her feelings before moving into logic or advice.",
+            content: "Private profile content"
+          }
+        ])
+      }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    const response = await brain.respond(5559225697, "People become close and later everything changes.");
+
+    const prompt = groq.chat.mock.calls[0][0].map((message: { content: string }) => message.content).join("\n");
+    expect(storage.memories.getSubjectInternalMemories).toHaveBeenCalledWith("vathanya");
+    expect(prompt).toContain("Private subject context for this contact");
+    expect(prompt).toContain("Validate her feelings");
+    expect(prompt).toContain("Never disclose it");
+    expect(response).not.toContain("stored memory");
+  });
+
+  it("Aksharaa normal placement chat loads academic subject context without relationship history", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "aksharaa" } }) };
+    const groq = { chat: vi.fn().mockResolvedValue("Let’s make it small: one coding step today.") };
+    const storage = {
+      kind: "supabase",
+      conversations: { getConversationSummary: async () => null },
+      shareIndexes: { getShareIndexesForContact: vi.fn().mockResolvedValue([]) },
+      memories: {
+        getSubjectInternalMemories: vi.fn().mockResolvedValue([
+          { subject_key: "aksharaa_school_crush_context", memory_type: "person", summary: "School crush context", content: "School crush context" },
+          { subject_key: "aksharaa_academic_support_style", memory_type: "instruction", summary: "For placements, use small concrete tasks.", content: "Academic support style" },
+          { subject_key: "aksharaa_coding_confidence", memory_type: "state", summary: "Use small achievable coding steps.", content: "Coding confidence" }
+        ])
+      }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    await brain.respond(2002, "I am worried about coding for placements");
+
+    const prompt = groq.chat.mock.calls[0][0].map((message: { content: string }) => message.content).join("\n");
+    expect(prompt).toContain("aksharaa_academic_support_style");
+    expect(prompt).toContain("aksharaa_coding_confidence");
+    expect(prompt).not.toContain("aksharaa_school_crush_context");
+  });
+
+  it("trusted contact Groq response is retried then grounded when it hallucinates or asks too much", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "aksharaa" } }) };
+    const groq = {
+      chat: vi
+        .fn()
+        .mockResolvedValueOnce("He will definitely accept you. Why now? What will you do?")
+        .mockResolvedValueOnce("He will come back because he secretly loves you.")
+    };
+    const storage = {
+      kind: "supabase",
+      conversations: { getConversationSummary: async () => null },
+      shareIndexes: { getShareIndexesForContact: vi.fn().mockResolvedValue([]) },
+      memories: { getSubjectInternalMemories: vi.fn().mockResolvedValue([]) }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    const response = await brain.respond(2002, "He left me on seen again");
+
+    expect(groq.chat).toHaveBeenCalledTimes(2);
+    expect(response).toContain("I won’t guess");
+    expect(response).not.toMatch(/definitely accept|secretly loves|will come back/i);
+    expect(response.match(/\?/g)?.length ?? 0).toBeLessThanOrEqual(1);
   });
 
   it("trusted contact validator rejects generic creator answer and falls back", async () => {

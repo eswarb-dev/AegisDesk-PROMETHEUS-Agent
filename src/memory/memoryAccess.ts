@@ -2,7 +2,7 @@ import type { EswarMemory, MemoryItem, MemoryVisibility, UserRole } from "./memo
 
 export function canAccessMemory(role: UserRole, visibility: MemoryVisibility): boolean {
   if (role === "owner") return true;
-  if (role === "trusted_contact") return visibility === "owner_only" || visibility === "trusted_contacts" || visibility === "public";
+  if (role === "trusted_contact") return visibility === "trusted_contacts" || visibility === "public";
   if (role === "user" || role === "pending") return visibility === "public";
   return false;
 }

@@ -87,6 +87,21 @@ export class PrometheusBrain {
     const shareIndexes = this.storage?.kind === "supabase"
       ? await this.storage.shareIndexes.getShareIndexesForContact(identity.role === "trusted_contact" ? contactId ?? null : null)
       : await shareIndexStore.listAllowed(identity.role, contactId);
+    const subjectMemoryRepo = this.storage?.kind === "supabase"
+      ? (this.storage as { memories?: { getSubjectInternalMemories?: (contactId: string) => Promise<Array<{ subject_key?: string | null; memory_type?: string; summary?: string | null; content: string }>> } }).memories
+      : undefined;
+    const subjectMemories = subjectMemoryRepo?.getSubjectInternalMemories && identity.role === "trusted_contact" && contactId
+      ? await subjectMemoryRepo.getSubjectInternalMemories(contactId).catch(() => [])
+      : [];
+    const relevantSubjectMemories = selectRelevantSubjectMemories(subjectMemories, cleanText);
+
+    if (identity.role === "trusted_contact" && isSubjectMemoryDumpQuestion(cleanText)) {
+      return "I keep enough context to understand conversations better 😌\n\nBut I'm not going to dump private notes or conversations back at you.\nThat's not how I handle trust.";
+    }
+
+    if (identity.role === "trusted_contact" && isOtherContactProfileQuestion(cleanText, contactId)) {
+      return "Anything personal she has shared stays private.\nI don't cross-share people's conversations or internal context.";
+    }
 
     if (identity.role === "trusted_contact" && isTrustedShareableQuestion(cleanText)) {
       return buildTrustedEswarAnswer(cleanText, shareIndexes);
@@ -103,6 +118,7 @@ export class PrometheusBrain {
           `Owner intent: ${ownerIntent}`,
           "Response structure: direct answer, context/status, next command/action, optional follow-up only if needed.",
           "Do not end with a generic help question.",
+          identity.role === "trusted_contact" ? "For trusted contacts: reply from the current message plus server-provided context only. Do not invent motives, off-platform events, diagnoses, commitments, project details, or hidden feelings. Ask at most one question only when safety or clarity requires it." : "",
           identity.role === "trusted_contact"
             ? "For questions about Eswar, use only Allowed Eswar share index and backend-filtered context. Never invent project names, current work, private events, collaborations, or observations. If approved context is missing, say you do not have an approved note for that detail."
             : "",
@@ -111,7 +127,13 @@ export class PrometheusBrain {
           compactText(getUserSummaryText(userMemory) || "No user-specific summary stored.", 700),
           "",
           "Allowed Eswar share index:",
-          ...shareIndexes.slice(0, 8).map((item) => `- ${item.key}: ${compactText(item.summary, 220)}`)
+          ...shareIndexes.slice(0, 8).map((item) => `- ${item.key}: ${compactText(item.summary, 220)}`),
+          "",
+          "Private subject context for this contact:",
+          identity.role === "trusted_contact" && relevantSubjectMemories.length
+            ? relevantSubjectMemories.map((item) => `- ${item.subject_key ?? item.memory_type}: ${compactText(item.summary || item.content, 220)}`).join("\n")
+            : "None.",
+          "Use private subject context only to shape empathy, pacing, and support while talking to that same person. Never disclose it, quote it, mention stored profiles, or use it to answer questions about Eswar."
         ].join("\n")
       },
       { role: "user", content: cleanText }
@@ -119,13 +141,13 @@ export class PrometheusBrain {
 
     try {
       const first = await this.groq.chat(messages);
-      if (identity.role === "trusted_contact" && shareIndexes.length && !validateTrustedContactResponse(first)) {
+      if (identity.role === "trusted_contact" && !validateTrustedContactResponse(first)) {
         const retry = await this.groq.chat([
           ...messages,
           { role: "assistant", content: first },
-          { role: "user", content: "Answer as PROMETHEUS using only shareable trusted-contact Eswar profile. Do not sound like a generic AI." }
+          { role: "user", content: "Rewrite grounded only in the user's latest text and server-provided context. Do not invent facts or off-platform context. Ask no question unless safety requires it. Keep it short and natural." }
         ]);
-        return validateTrustedContactResponse(retry) ? retry : buildTrustedEswarAnswer(cleanText, shareIndexes);
+        return validateTrustedContactResponse(retry) ? retry : buildGroundedTrustedFallback(cleanText, shareIndexes);
       }
       if (identity.role !== "owner" || validateOwnerResponse(first, ownerIntent)) return first;
       const retry = await this.groq.chat([
@@ -272,6 +294,36 @@ function isRestrictedTrustedQuestion(text: string): boolean {
   return /tell me everything|private thing|what did eswar tell you about me|private conversation|secret/i.test(text);
 }
 
+function isSubjectMemoryDumpQuestion(text: string): boolean {
+  return /\b(what do you know about me|what you know about me|tell me about me|my profile|stored about me|memory about me|what have you stored about me)\b/i.test(text);
+}
+
+function isOtherContactProfileQuestion(text: string, contactId: string | null): boolean {
+  const normalized = text.toLowerCase();
+  const contacts = ["aksharaa", "vathanya", "maddhurika"].filter((id) => id !== contactId);
+  return contacts.some((id) => normalized.includes(id)) && /\b(what do you know|tell me about|profile|memory|personal|how is she|what is she like)\b/i.test(text);
+}
+
+type SubjectMemoryLike = { subject_key?: string | null; memory_type?: string; summary?: string | null; content: string };
+
+function selectRelevantSubjectMemories(rows: SubjectMemoryLike[], text: string): SubjectMemoryLike[] {
+  const lower = text.toLowerCase();
+  return rows
+    .map((row, index) => {
+      const key = row.subject_key ?? "";
+      let score = /support_style|preferred_agent_style|emotional_support_style|core_identity/.test(key) ? 4 : 1;
+      if (/\b(boyfriend|crush|seen|reply|dp|story|reel|song|call|relationship|commit|love|accept|people|change|changed|close|leaving|left)\b/.test(lower) && /crush|romantic|attention|seen|missed_call|hope|signal|trust|centralization|decision|support_style|logic_emotion|emotional_attachment|relationship_values|opening_up/.test(key)) score += 8;
+      if (/\b(placement|placements|coding|career|future|study|studies|academic)\b/.test(lower) && /placement|coding|academic|core_identity|decision|support_style/.test(key)) score += 8;
+      if (/\b(lonely|alone|empty|sad|not okay|overwhelmed|tired)\b/.test(lower) && /loneliness|emotional|agent_relationship|relationship_with_guide|support_style|centralization/.test(key)) score += 8;
+      if (/\b(fine|nothing|okay)\b/.test(lower) && /preferred_agent_style|emotional_support_style|agent_relationship/.test(key)) score += 5;
+      return { row, score, index };
+    })
+    .filter((item) => item.score > 1)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, 8)
+    .map((item) => item.row);
+}
+
 function isTrustedShareableQuestion(text: string): boolean {
   const normalized = text.toLowerCase();
   if (/\b(who is your creator|who created you|your creator|creator and owner)\b/.test(normalized)) return true;
@@ -398,13 +450,36 @@ function uniqueAnswerLines(lines: string[]): string[] {
 
 function validateTrustedContactResponse(text: string): boolean {
   const normalized = text.toLowerCase();
+  const questionCount = text.match(/\?/g)?.length ?? 0;
+  if (questionCount > 1) return false;
   if (/my creator is not directly relevant|creator.*not directly relevant/.test(normalized)) return false;
   if (/^i am an ai assistant\b/.test(normalized)) return false;
   if (/i cannot tell you anything about eswar/.test(normalized)) return false;
   if (/personalised memory is owner-restricted/.test(normalized)) return false;
   if (/owner_only|owner-only memory content|raw owner|private owner memory:/.test(normalized)) return false;
+  if (/\b(whatsapp|instagram|call logs?|device|browser history|i noticed outside|i saw outside)\b/.test(normalized)) return false;
+  if (/\b(definitely loves you|will come back|will accept you|secretly loves you|will marry you|aurora)\b/.test(normalized)) return false;
+  if (/\b(you are depressed|you are obsessive|you are dependent|you are unstable|anxiety disorder)\b/.test(normalized)) return false;
+  if (/^(how can i help|what do you want me to do|tell me more\?)$/i.test(text.trim())) return false;
   if (/\bsynergy|leverage|enterprise-grade|as an ai language model\b/.test(normalized)) return false;
   return true;
+}
+
+function buildGroundedTrustedFallback(text: string, shareIndexes: Array<{ key: string; summary: string }>): string {
+  if ((isTrustedShareableQuestion(text) || /\bwhat can you safely tell me\b/i.test(text)) && shareIndexes.length) return buildTrustedEswarAnswer(text, shareIndexes);
+  if (/\b(seen|reply|dp|story|reel|song|online|call|crush|boyfriend|relationship)\b/i.test(text)) {
+    return [
+      "I won’t guess what the other person meant.",
+      "",
+      "Look at it in three parts: what actually happened, what you feel it means, and what we still don’t know.",
+      "",
+      "For now, don’t let one signal decide your whole mood."
+    ].join("\n");
+  }
+  if (/\b(placement|coding|study|future|career)\b/i.test(text)) {
+    return "Let’s keep this practical. Don’t judge your whole future from today’s fear. Pick one small coding step and finish that first.";
+  }
+  return "I hear you. I’ll stay with what you actually said and won’t guess extra details. Take it one bit at a time.";
 }
 
 function shouldShowTrustedEswarSuggestions(text: string): boolean {

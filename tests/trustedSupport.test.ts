@@ -6,7 +6,7 @@ import { createMockContext } from "./helpers.js";
 
 const config = { ownerTelegramId: "1001", groqModel: "test", groqApiKey: "test" };
 
-function createStorage(options: { lastMediumAlertAt?: string | null } = {}) {
+function createStorage(options: { lastMediumAlertAt?: string | null; recentEvents?: Array<{ severity: string; emotional_state: string }> } = {}) {
   const supportEvents: unknown[] = [];
   const ownerAlerts: Array<{ id: string; created_at: string; severity: string; contact_id: string; title: string }> = [];
   return {
@@ -14,13 +14,48 @@ function createStorage(options: { lastMediumAlertAt?: string | null } = {}) {
     conversations: {
       updateConversationSummary: async (input: unknown) => input
     },
+    memories: {
+      getSubjectInternalMemories: async (contactId: string) => contactId === "vathanya" ? [
+        {
+          subject_key: "vathanya_support_style",
+          summary: "Listen first, validate emotion, then gently separate control from acceptance and boundaries.",
+          content: "Private Vathanya support style"
+        },
+        {
+          subject_key: "vathanya_communication_style",
+          summary: "Use natural, casual, emotionally warm replies; avoid formal counselling style.",
+          content: "Private Vathanya communication style"
+        }
+      ] : contactId === "aksharaa" ? [
+        {
+          subject_key: "aksharaa_school_crush_context",
+          summary: "Her boyfriend reference usually means a school-time crush, not a committed boyfriend.",
+          content: "Private Aksharaa relationship context"
+        },
+        {
+          subject_key: "aksharaa_support_style",
+          summary: "Validate first, then separate facts, assumptions, hopes, and current actions.",
+          content: "Private Aksharaa support style"
+        },
+        {
+          subject_key: "aksharaa_academic_support_style",
+          summary: "For placements, use small concrete tasks and visible progress.",
+          content: "Private Aksharaa academic style"
+        },
+        {
+          subject_key: "aksharaa_coding_confidence",
+          summary: "Use small achievable coding learning steps instead of overwhelming plans.",
+          content: "Private Aksharaa coding confidence"
+        }
+      ] : []
+    },
     support: {
       createSupportEvent: async (input: unknown) => {
         supportEvents.push(input);
         return input;
       },
       getRecentSupportEvents: async () => supportEvents,
-      getRecentEventsForContact: async () => [],
+      getRecentEventsForContact: async () => options.recentEvents ?? [],
       getLastOwnerAlert: async (_contactId: string, severity?: string) =>
         severity === "medium" && options.lastMediumAlertAt
           ? { created_at: options.lastMediumAlertAt, severity: "medium", contact_id: "aksharaa" }
@@ -42,6 +77,10 @@ function createStorage(options: { lastMediumAlertAt?: string | null } = {}) {
 
 function contact() {
   return { contactId: "aksharaa", telegramUserId: "2002", chatId: "2002", displayName: "Aksharaa" };
+}
+
+function vathanya() {
+  return { contactId: "vathanya", telegramUserId: "5559225697", chatId: "5559225697", displayName: "Vathanya" };
 }
 
 describe("trusted support mode", () => {
@@ -129,6 +168,112 @@ describe("trusted support mode", () => {
     expect(sent[0]).toContain("Aksharaa seems emotionally low");
     expect(sent[0]).toContain("Hey, I’m here. You don’t have to explain everything at once.");
     expect(sent[0]).toContain("This is based only on their conversation with PROMETHEUS");
+  });
+
+  it("Vathanya support reply prompt uses private subject context without disclosing it", async () => {
+    const storage = createStorage();
+    const telegram = { sendMessage: async () => undefined };
+    const groq = {
+      chat: async (messages: Array<{ content: string }>) => {
+        const prompt = messages.map((message) => message.content).join("\n");
+        expect(prompt).toContain("vathanya_support_style");
+        expect(prompt).toMatch(/validate emotion/i);
+        expect(prompt).toContain("non-disclosable");
+        return "Yeah, I get why that would affect you. Knowing it logically and accepting it emotionally are different things.";
+      }
+    };
+    const service = new TrustedSupportService(config, storage as never, groq);
+
+    const reply = await service.handleMessage({ contact: vathanya(), text: "People leave and it affects me", telegram: telegram as never });
+
+    expect(reply).toContain("accepting it emotionally");
+    expect(reply).not.toMatch(/memory|profile|stored/i);
+  });
+
+  it("Vathanya depression wording sends owner alert with what why and how she feels", async () => {
+    const storage = createStorage();
+    const sent: string[] = [];
+    const telegram = { sendMessage: async (_chatId: string, message: string) => sent.push(message) };
+    const service = new TrustedSupportService(config, storage as never, { chat: async () => "I’m here with you. Let’s take this slowly." });
+
+    await service.handleMessage({ contact: vathanya(), text: "I feel depression and I keep overthinking", telegram: telegram as never });
+
+    expect(sent[0]).toContain("Vathanya seems highly distressed");
+    expect(sent[0]).toContain("What they said:");
+    expect(sent[0]).toContain("Why it matters:");
+    expect(sent[0]).toContain("How she may be feeling:");
+    expect(sent[0]).toContain("Scope:");
+    expect(storage._supportEvents[0]).toMatchObject({ contact_id: "vathanya", owner_notified: true });
+  });
+
+  it("Aksharaa relationship support uses school-crush context without inventing commitment", async () => {
+    const storage = createStorage();
+    const telegram = { sendMessage: async () => undefined };
+    const groq = {
+      chat: async (messages: Array<{ content: string }>) => {
+        const prompt = messages.map((message) => message.content).join("\n");
+        expect(prompt).toContain("aksharaa_school_crush_context");
+        expect(prompt).toContain("school-time crush");
+        expect(prompt).toContain("facts, assumptions, hopes");
+        return "I can't know what's inside his head. Let's separate the fact, your hope, and what he's actually doing right now.";
+      }
+    };
+    const service = new TrustedSupportService(config, storage as never, groq);
+
+    const reply = await service.handleMessage({ contact: contact(), text: "My boyfriend left me on seen again", telegram: telegram as never });
+
+    expect(reply).toContain("what he's actually doing");
+    expect(reply).not.toMatch(/definitely loves you|will come back|committed boyfriend/i);
+  });
+
+  it("support mode rejects hallucinated question-heavy Groq replies", async () => {
+    const storage = createStorage();
+    const telegram = { sendMessage: async () => undefined };
+    const service = new TrustedSupportService(config, storage as never, {
+      chat: async () => "He definitely loves you. Why did he do that? What will you do now?"
+    });
+
+    const reply = await service.handleMessage({ contact: contact(), text: "My boyfriend left me on seen again", telegram: telegram as never });
+
+    expect(reply).not.toContain("definitely loves you");
+    expect(reply.match(/\?/g)?.length ?? 0).toBeLessThanOrEqual(1);
+  });
+
+  it("Aksharaa placement anxiety creates support event and practical reply path", async () => {
+    const storage = createStorage();
+    const telegram = { sendMessage: async () => undefined };
+    const groq = {
+      chat: async (messages: Array<{ content: string }>) => {
+        const prompt = messages.map((message) => message.content).join("\n");
+        expect(prompt).toContain("aksharaa_academic_support_style");
+        expect(prompt).toContain("aksharaa_coding_confidence");
+        expect(prompt).not.toContain("aksharaa_school_crush_context");
+        return "First breathe. Then we split placements into one coding step for today.";
+      }
+    };
+    const service = new TrustedSupportService(config, storage as never, groq);
+
+    const reply = await service.handleMessage({ contact: contact(), text: "I am scared about placements and coding", telegram: telegram as never });
+
+    expect(reply).toContain("one coding step");
+    expect(storage._supportEvents[0]).toMatchObject({ contact_id: "aksharaa", severity: "medium" });
+  });
+
+  it("continued Vathanya low-mood chat can trigger owner alert after recent emotional support events", async () => {
+    const storage = createStorage({
+      recentEvents: [
+        { severity: "low", emotional_state: "sad" },
+        { severity: "low", emotional_state: "lonely" }
+      ]
+    });
+    const sent: string[] = [];
+    const telegram = { sendMessage: async (_chatId: string, message: string) => sent.push(message) };
+    const service = new TrustedSupportService(config, storage as never, { chat: async () => "I’m here. We can go slowly." });
+
+    await service.handleMessage({ contact: vathanya(), text: "I'm fine", telegram: telegram as never });
+
+    expect(sent[0]).toContain("Vathanya seems emotionally low");
+    expect(storage._supportEvents[0]).toMatchObject({ severity: "low", owner_notified: true });
   });
 
   it("owner can view /support and trusted privacy explains alert behavior", async () => {

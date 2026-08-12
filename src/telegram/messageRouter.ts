@@ -18,7 +18,7 @@ export function registerMessageRouter(
     if (storage && await answerOwnerLogQuestion(ctx.message.text, ctx, config, storage)) return;
     if (storage?.kind === "supabase" && ctx.from?.id && ctx.chat?.id) {
       const user = await storage.users.getTelegramUserById(ctx.from.id);
-      if (user?.role === "trusted_contact" && user.contact_id && user.memory_enabled !== false && isTrustedSupportIntent(ctx.message.text)) {
+      if (user?.role === "trusted_contact" && user.contact_id && user.memory_enabled !== false && await shouldUseTrustedSupport(storage, user.contact_id, ctx.message.text)) {
         const support = new TrustedSupportService(config, storage);
         const response = await support.handleMessage({
           contact: {
@@ -52,8 +52,24 @@ export function registerMessageRouter(
   });
 }
 
+async function shouldUseTrustedSupport(storage: Extract<StorageProvider, { kind: "supabase" }>, contactId: string, text: string): Promise<boolean> {
+  if (isTrustedSupportIntent(text)) return true;
+  if (contactId === "aksharaa" && isAksharaaSupportTopic(text)) return true;
+  if (contactId !== "vathanya") return false;
+  const recent = await storage.support.getRecentEventsForContact(contactId, 3).catch(() => []);
+  return recent.some((event) => event.emotional_state !== "neutral" || event.severity !== "low") && isVathanyaSupportFollowUp(text);
+}
+
 function isTrustedSupportIntent(text: string): boolean {
-  return /\b(i feel|feel low|not okay|not ok|sad|alone|lonely|tired of|can't handle|cant handle|panic|broken|nobody cares|tell eswar|alert eswar|notify eswar|message eswar)\b/i.test(text);
+  return /\b(i feel|feel low|not okay|not ok|sad|alone|lonely|tired of|can't handle|cant handle|panic|broken|nobody cares|tell eswar|alert eswar|notify eswar|message eswar|depress(?:ed|ion)?|mental health|empty|worthless|crying|cry|overthinking|anxiety|anxious|people leave|everyone leaves|left me|changes|attached|attachment|i'?m fine|nothing is wrong|left on seen|seen status|dry reply|missed call|placement|placements|coding|future|boyfriend|crush)\b/i.test(text);
+}
+
+function isVathanyaSupportFollowUp(text: string): boolean {
+  return /\b(why|how|again|still|same|it hurts|hurts|what should i do|don'?t know|confused|okay|fine|nothing|people|relationship|change|changed|leaving|left|close|attached|miss|feel|feeling)\b/i.test(text);
+}
+
+function isAksharaaSupportTopic(text: string): boolean {
+  return /\b(boyfriend|crush|he loves me|he'?ll accept|seen|left on seen|dry reply|one word reply|dp|story|reel|song|online status|missed call|placement|placements|coding|future|trust|hope|relationship|commit|commitment)\b/i.test(text);
 }
 
 function summarizeForStorage(text: string): string {

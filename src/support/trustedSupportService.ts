@@ -30,6 +30,7 @@ export class TrustedSupportService {
     if (this.storage.kind !== "supabase") return this.fallbackReply(this.detector.classify(input.text), false);
     const signal = this.detector.classify(input.text);
     const recent = await this.storage.support.getRecentEventsForContact(input.contact.contactId, 5);
+    const subjectContext = await this.loadSubjectContext(input.contact.contactId, input.text);
     const directTellEswar = /\b(tell|alert|message|notify)\s+eswar\b/i.test(input.text);
     const repeatedLowMood = signal.severity === "low" && signal.state !== "neutral" && recent.filter((event) => event.severity === "low" && event.emotional_state !== "neutral").length >= 2;
     const shouldAlert = directTellEswar || signal.severity === "critical" || signal.severity === "high" || signal.severity === "medium" || repeatedLowMood;
@@ -60,13 +61,13 @@ export class TrustedSupportService {
       await this.alertOwner(input.contact, signal, safeSummary, input.telegram);
     }
 
-    return this.generateReply(input.text, input.contact, signal, alertWillBeSent);
+    return this.generateReply(input.text, input.contact, signal, alertWillBeSent, subjectContext);
   }
 
-  private async generateReply(text: string, contact: TrustedSupportContact, signal: EmotionalSignal, alertWillBeSent: boolean): Promise<string> {
+  private async generateReply(text: string, contact: TrustedSupportContact, signal: EmotionalSignal, alertWillBeSent: boolean, subjectContext: string): Promise<string> {
     const fallback = this.fallbackReply(signal, alertWillBeSent);
     try {
-      return await this.groq.chat([
+      const response = await this.groq.chat([
         {
           role: "system",
           content: [
@@ -74,21 +75,41 @@ export class TrustedSupportService {
             "For approved trusted contacts only, act as a calm guide, mentor, emotional supporter, and trusted bridge to Eswar.",
             "Boundaries: only refer to this Telegram bot conversation. Never claim knowledge from private chats, WhatsApp, Instagram, calls, devices, or outside activity.",
             "Do not sound scripted or therapy-like. Keep it natural, gentle, and concise.",
+            "Answer from the current message and provided subject context only. Do not invent what happened, what someone meant, or what someone will do.",
+            "Avoid question loops. Ask at most one question, and only when safety or clarification genuinely needs it.",
+            "Prefer: acknowledge feeling, separate fact from interpretation when relevant, give one practical next step.",
             "If crisis risk exists: encourage immediate local help, not staying alone, and do not rely only on Eswar.",
             alertWillBeSent ? "Tell them you are alerting Eswar in a calm way." : "Do not say you alerted Eswar.",
             "When they seem lonely, emotionally low, confused, or unsupported, gently guide them toward Eswar as a calm bridge.",
             "Use soft ideas: Eswar would listen; they can start with a small message; they do not need perfect words.",
             "Do not force them, command them, or say Eswar will fix everything.",
             "Do not claim you have human emotions. You may say you are only an agent, but you can notice when someone should not sit alone with something.",
+            "Use private subject context only to shape the reply. Never mention stored memory, profiles, notes, or what Eswar stored.",
+            contact.contactId === "aksharaa"
+              ? "For Aksharaa: be friendly, simple, emotionally aware, and practical. For relationship loops, separate facts, assumptions, hope, and current actions. Do not validate imaginary commitment, do not promise he will return, and do not tell her to move on harshly. For placements, reduce overwhelm into small practical next steps."
+              : "",
+            contact.contactId === "vathanya"
+              ? "For Vathanya: validate emotion first, then gently separate logic from acceptance. Be casual, warm, simple, and not counselling-like. If she says she is fine, do not interrogate."
+              : "",
             "Do not repeat style-reference lines exactly; respond naturally to the current message."
           ].join("\n")
         },
         {
           role: "system",
-          content: `Contact: ${contact.displayName}\nEmotional state: ${signal.state}\nSeverity: ${signal.severity}\nScope: inside @AegisDesk_PrometheusBot only`
+          content: [
+            `Contact: ${contact.displayName}`,
+            `Emotional state: ${signal.state}`,
+            `Severity: ${signal.severity}`,
+            "Scope: inside @AegisDesk_PrometheusBot only",
+            "",
+            "Private subject context:",
+            subjectContext || "None.",
+            "This context is non-disclosable. Use it only for empathy, pacing, support style, and continuity."
+          ].join("\n")
         },
         { role: "user", content: text }
       ]);
+      return validateSupportReply(response) ? response : fallback;
     } catch {
       return fallback;
     }
@@ -134,6 +155,16 @@ export class TrustedSupportService {
     return Date.now() - new Date(last.created_at).getTime() >= 15 * 60 * 1000;
   }
 
+  private async loadSubjectContext(contactId: string, text: string): Promise<string> {
+    if (this.storage.kind !== "supabase") return "";
+    const repo = (this.storage as { memories?: { getSubjectInternalMemories?: (contactId: string) => Promise<Array<{ subject_key?: string | null; memory_type?: string; summary?: string | null; content: string }>> } }).memories;
+    if (!repo?.getSubjectInternalMemories) return "";
+    const rows = await repo.getSubjectInternalMemories(contactId).catch(() => []);
+    return selectRelevantSubjectMemories(rows, text)
+      .map((item) => `- ${item.subject_key ?? item.memory_type ?? "subject_context"}: ${(redactSecrets(item.summary || item.content) ?? "").slice(0, 220)}`)
+      .join("\n");
+  }
+
   private async alertOwner(contact: TrustedSupportContact, signal: EmotionalSignal, safeSummary: string, telegram: Telegram): Promise<void> {
     if (this.storage.kind !== "supabase") return;
     const body = [
@@ -146,6 +177,12 @@ export class TrustedSupportService {
       "",
       "What they said:",
       `"${redactSecrets(signal.safeQuote)}"`,
+      "",
+      "Why it matters:",
+      alertReason(signal),
+      "",
+      "How she may be feeling:",
+      supportRead(signal),
       "",
       "My read:",
       supportRead(signal),
@@ -196,4 +233,43 @@ function supportRead(signal: EmotionalSignal): string {
   if (signal.severity === "medium") return "They may need gentle support and room to speak without pressure.";
   if (signal.state === "lonely" || signal.state === "sad") return "They may need to feel noticed, not interrogated.";
   return "A gentle check-in may help.";
+}
+
+function alertReason(signal: EmotionalSignal): string {
+  if (signal.severity === "critical") return "The message contains crisis-risk wording, so this should be treated as urgent.";
+  if (signal.severity === "high") return "The message suggests she may be struggling to cope and should not be left feeling unseen.";
+  if (signal.severity === "medium") return "The message suggests active emotional distress rather than a casual mood update.";
+  if (signal.state === "lonely" || signal.state === "sad") return "The conversation has continued around loneliness or low mood, so a gentle check-in may help.";
+  return "PROMETHEUS noticed an emotional-support pattern in the bot conversation.";
+}
+
+function validateSupportReply(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const questionCount = text.match(/\?/g)?.length ?? 0;
+  if (questionCount > 1) return false;
+  if (/\b(whatsapp|instagram|call logs?|device|browser history|i noticed outside|i saw outside)\b/.test(normalized)) return false;
+  if (/\b(definitely loves you|will come back|will accept you|secretly loves you|will marry you)\b/.test(normalized)) return false;
+  if (/\b(you are depressed|you are obsessive|you are dependent|you are unstable|anxiety disorder)\b/.test(normalized)) return false;
+  if (/^(how can i help|what do you want me to do|tell me more\?)$/i.test(text.trim())) return false;
+  return true;
+}
+
+type SubjectMemoryLike = { subject_key?: string | null; memory_type?: string; summary?: string | null; content: string };
+
+function selectRelevantSubjectMemories(rows: SubjectMemoryLike[], text: string): SubjectMemoryLike[] {
+  const lower = text.toLowerCase();
+  const scored = rows.map((row, index) => {
+    const key = row.subject_key ?? "";
+    let score = /support_style|preferred_agent_style|emotional_support_style|decision_support|core_identity/.test(key) ? 4 : 1;
+    if (/\b(boyfriend|crush|seen|reply|dp|story|reel|song|call|relationship|commit|love|accept|people|change|changed|close|leaving|left)\b/.test(lower) && /crush|romantic|attention|seen|missed_call|hope|signal|trust|centralization|decision|support_style|logic_emotion|emotional_attachment|relationship_values|opening_up/.test(key)) score += 8;
+    if (/\b(placement|placements|coding|career|future|study|studies|academic)\b/.test(lower) && /placement|coding|academic|core_identity|decision|support_style/.test(key)) score += 8;
+    if (/\b(lonely|alone|empty|sad|not okay|overwhelmed|tired)\b/.test(lower) && /loneliness|emotional|agent_relationship|relationship_with_guide|support_style|centralization/.test(key)) score += 8;
+    if (/\b(fine|nothing|okay)\b/.test(lower) && /preferred_agent_style|emotional_support_style|agent_relationship/.test(key)) score += 5;
+    return { row, score, index };
+  });
+  return scored
+    .filter((item) => item.score > 1)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, 8)
+    .map((item) => item.row);
 }

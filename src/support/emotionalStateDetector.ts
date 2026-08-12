@@ -28,10 +28,10 @@ export class EmotionalStateDetector {
     if (/\b(kill myself|suicide|end my life|hurt myself|harm myself|die right now|not safe with myself|hurt someone)\b/.test(lower)) {
       return signal("crisis_risk", "critical", clean);
     }
-    if (/\b(i can'?t handle this|i feel broken|want to disappear|panic|can'?t breathe|so alone|nobody cares)\b/.test(lower)) {
+    if (/\b(i can'?t handle this|i feel broken|want to disappear|panic|can'?t breathe|so alone|nobody cares|worthless|depressed|depression)\b/.test(lower)) {
       return signal("emotionally_distressed", "high", clean);
     }
-    if (/\b(i feel bad|i'?m tired of this|no one understands|i don'?t know what to do|feel lost|too much)\b/.test(lower)) {
+    if (/\b(i feel bad|i'?m tired of this|no one understands|i don'?t know what to do|feel lost|too much|mental health|overthinking|crying|people leave|everyone leaves|left me|it affects me|attached|attachment|left on seen|dry reply|missed call|placement|placements|coding|future|trust issues|relationship confusion|commitment)\b/.test(lower)) {
       return signal("emotionally_distressed", "medium", clean);
     }
     if (/\b(i'?m fine|leave it|nothing|it'?s okay|don'?t want to bother anyone|do not want to bother anyone)\b/.test(lower)) {

@@ -11,7 +11,7 @@ export const defaultTrustedContactsData: TrustedContactsData = {
       telegram_user_id: null,
       chat_id: null,
       username: null,
-      enabled: false,
+      enabled: true,
       role: "trusted_contact",
       permissions: {
         receive_agent_messages: true,
@@ -27,10 +27,11 @@ export const defaultTrustedContactsData: TrustedContactsData = {
     {
       id: "vathanya",
       name: "Vathanya",
+      relationship: "sister-like close friend",
       telegram_user_id: null,
       chat_id: null,
       username: null,
-      enabled: false,
+      enabled: true,
       role: "trusted_contact",
       permissions: {
         receive_agent_messages: true,

@@ -13,6 +13,7 @@ export type TrustedContactPermissions = {
 export type TrustedContact = {
   id: ContactId;
   name: string;
+  relationship?: string | null;
   telegram_user_id: number | null;
   chat_id: number | null;
   username: string | null;

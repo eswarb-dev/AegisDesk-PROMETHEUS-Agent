@@ -14,6 +14,7 @@ import { fallbackResponder, type FallbackResponder } from "./fallbackResponder.j
 import { GroqClient, type ChatMessage } from "./groqClient.js";
 import { buildCapabilityResponse, classifyOwnerIntent, deterministicOwnerFallback, validateOwnerResponse } from "./ownerIntent.js";
 import { NON_OWNER_SYSTEM_PROMPT, PROMETHEUS_SYSTEM_PROMPT } from "./prometheusPersona.js";
+import { decideResponseMode, type ResponseDecision } from "./responseModeDecider.js";
 
 type ChatEngine = {
   chat(messages: ChatMessage[]): Promise<string>;
@@ -36,6 +37,7 @@ export class PrometheusBrain {
       role: identity.role,
       canUsePrivateMemory: identity.role === "owner"
     };
+    const decision = decideResponseMode(cleanText);
 
     if (identity.role === "user" || identity.role === "pending") {
       if (claimsOwnerIdentity(cleanText)) {
@@ -59,21 +61,12 @@ export class PrometheusBrain {
     if (identity.role === "owner") {
       const directOwnerReply = getDirectOwnerReply(cleanText);
       if (directOwnerReply) return directOwnerReply;
-      if (isOwnerMemoryQuery(cleanText)) {
+      if (decision.mode === "FACT_RETRIEVAL_THEN_NATURAL_REPLY") {
+        return this.answerOwnerFactQuestion(cleanText, decision);
+      }
+      if (decision.mode === "OWNER_MEMORY_SUMMARY" || isOwnerMemoryQuery(cleanText)) {
         const memory = await this.store.loadMemory();
-        const lines = [
-          `- You are ${memory.owner.name}.`,
-          "- You are the Creator and Owner of PROMETHEUS.",
-          "- Your main system is AegisDesk.",
-          "- PROMETHEUS is your personalised Telegram agent.",
-          "- Preferred tone: respectful, direct, loyal, emotionally aware.",
-          "- Address preference: Sir.",
-          ...memory.projects.slice(0, 4).map((item) => `- ${item.content}`),
-          ...memory.preferences.slice(0, 4).map((item) => `- ${item.content}`)
-        ];
-        return lines.length
-          ? ["Yes, Sir.", "Here is what I know from your owner memory:", "", ...lines].join("\n")
-          : "Sir, I do not have enough owner memory stored yet.\nYou can add memory with /memory or direct memory commands.";
+        return buildNaturalOwnerMemoryAnswer(memory);
       }
       if (ownerIntent === "capability_check") {
         const capability = await buildCapabilityResponse(cleanText, this.storage);
@@ -152,6 +145,38 @@ export class PrometheusBrain {
       return this.fallback.pick("non_owner");
     }
   }
+
+  private async answerOwnerFactQuestion(text: string, decision: ResponseDecision): Promise<string> {
+    if (!this.storage || this.storage.kind !== "supabase") {
+      return "Sir, I cannot verify that from stored bot logs.";
+    }
+
+    if (decision.contactId) {
+      const contact = await this.storage.contacts.findByContactId(decision.contactId);
+      const displayName = formatContactName(decision.contactId);
+      if (!contact?.telegram_user_id && !contact?.chat_id) {
+        return `Sir, ${displayName} is not linked to a Telegram chat yet, so I cannot verify her PROMETHEUS bot conversation.`;
+      }
+
+      const messages = decision.asksAboutOwner
+        ? await this.storage.messages.searchMessagesAboutOwner(decision.contactId, contact.telegram_user_id, 30)
+        : await this.storage.messages.getMessagesByContactId(decision.contactId, contact.telegram_user_id, 30);
+      const inbound = messages.filter((message) => message.direction === "inbound");
+      if (!inbound.length) {
+        return decision.asksAboutOwner
+          ? `Sir, I checked PROMETHEUS bot logs. I do not see ${displayName} asking about you inside this bot.`
+          : `Sir, I checked PROMETHEUS bot logs. I do not see stored messages from ${displayName} inside this bot.`;
+      }
+      return formatContactLogAnswer(displayName, inbound, decision.asksAboutOwner);
+    }
+
+    const messages = await this.storage.messages.searchMessagesAboutOwner(null, null, 30);
+    const inbound = messages.filter((message) => message.direction === "inbound");
+    if (!inbound.length) {
+      return "Sir, I checked PROMETHEUS bot logs. I do not see anyone asking about you inside this bot.";
+    }
+    return formatContactLogAnswer("a trusted contact", inbound, true);
+  }
 }
 
 function compactText(text: string, maxLength: number): string {
@@ -168,7 +193,40 @@ function claimsOwnerIdentity(text: string): boolean {
 }
 
 function isOwnerMemoryQuery(text: string): boolean {
-  return /\b(list|show|what).*\b(know|memory|about me|owner memory)\b/i.test(text) || /\bowner memory summary\b/i.test(text);
+  return /\b(what do you know about me|list .*know about me|tell me about myself|tell me about me|describe me|what is stored in owner memory|owner memory summary)\b/i.test(text);
+}
+
+function buildNaturalOwnerMemoryAnswer(memory: Awaited<ReturnType<MemoryStore["loadMemory"]>>): string {
+  const project = memory.projects.find((item) => /aegisdesk|prometheus|agent/i.test(item.content))?.content;
+  const preference = memory.preferences.find((item) => /respectful|direct|loyal|emotionally aware|sir/i.test(item.content))?.content;
+  const core = [
+    `Yes, Sir. From what I know, you are ${memory.owner.name} — my creator and owner.`,
+    project
+      ? project
+      : "You are building AegisDesk around PROMETHEUS as a personal agent ecosystem,",
+    preference
+      ? `and ${preference.charAt(0).toLowerCase()}${preference.slice(1)}`
+      : "and you prefer me to stay respectful, direct, loyal, and emotionally aware."
+  ].join(" ").replace(/\s+,/g, ",");
+  return `${core}\n\nUse /memory summary if you want the structured version.`;
+}
+
+function formatContactName(contactId: string): string {
+  return contactId.charAt(0).toUpperCase() + contactId.slice(1);
+}
+
+function formatContactLogAnswer(displayName: string, messages: Array<{ text_redacted?: string | null; text?: string | null; created_at?: string }>, asksAboutOwner?: boolean): string {
+  const latest = messages[messages.length - 1];
+  const quote = compactText(latest.text_redacted || latest.text || "", 220);
+  return [
+    `Sir, ${displayName} ${asksAboutOwner ? "asked about you" : "has stored messages"} inside PROMETHEUS bot logs.`,
+    "",
+    "She asked:",
+    quote ? `'${quote}'` : "(stored message text unavailable)",
+    "",
+    "Scope:",
+    "This is only from PROMETHEUS bot logs."
+  ].join("\n");
 }
 
 function isRestrictedTrustedQuestion(text: string): boolean {

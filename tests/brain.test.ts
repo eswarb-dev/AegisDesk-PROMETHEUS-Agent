@@ -20,6 +20,8 @@ describe("PROMETHEUS brain", () => {
 
     expect(response).toContain("Yes, Sir.");
     expect(response).toContain("Eswar B");
+    expect(response).toContain("Use /memory summary");
+    expect(response).not.toContain("- You are");
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
@@ -159,6 +161,65 @@ describe("PROMETHEUS brain", () => {
     const brain = new PrometheusBrain(config, store, groq);
 
     await expect(brain.respond(1001, "Is this Eswar bro?")).resolves.toContain("Creator and Owner");
+  });
+
+  it("owner contact-log question checks bot_messages before answering", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const storage = createLogStorage({
+      contact: { telegram_user_id: 5559225697, chat_id: 5559225697 },
+      aboutMessages: []
+    });
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), undefined, storage as never);
+
+    const response = await brain.respond(1001, "what vathanya asked you about me");
+
+    expect(storage.contacts.findByContactId).toHaveBeenCalledWith("vathanya");
+    expect(storage.messages.searchMessagesAboutOwner).toHaveBeenCalledWith("vathanya", 5559225697, 30);
+    expect(response).toBe("Sir, I checked PROMETHEUS bot logs. I do not see Vathanya asking about you inside this bot.");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("owner contact-log question reports unlinked contact", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const storage = createLogStorage({ contact: { telegram_user_id: null, chat_id: null }, aboutMessages: [] });
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), undefined, storage as never);
+
+    const response = await brain.respond(1001, "does vathanya chatted with you");
+
+    expect(response).toBe("Sir, Vathanya is not linked to a Telegram chat yet, so I cannot verify her PROMETHEUS bot conversation.");
+    expect(storage.messages.searchMessagesAboutOwner).not.toHaveBeenCalled();
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("owner contact-log question summarizes existing stored message", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const storage = createLogStorage({
+      contact: { telegram_user_id: 5559225697, chat_id: 5559225697 },
+      aboutMessages: [
+        {
+          telegram_user_id: "5559225697",
+          chat_id: "5559225697",
+          role: "trusted_contact",
+          contact_id: "vathanya",
+          direction: "inbound",
+          message_type: "text",
+          text_redacted: "Can you tell me about Eswar?",
+          created_at: "2026-08-12T10:00:00Z"
+        }
+      ]
+    });
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), undefined, storage as never);
+
+    const response = await brain.respond(1001, "what did vathanya ask about me");
+
+    expect(response).toContain("Sir, Vathanya asked about you");
+    expect(response).toContain("'Can you tell me about Eswar?'");
+    expect(response).toContain("only from PROMETHEUS bot logs");
+    expect(response).not.toContain("owner memory");
+    expect(groq.chat).not.toHaveBeenCalled();
   });
 
   it("non-owner private questions cannot access memory or Groq", async () => {
@@ -418,8 +479,10 @@ describe("PROMETHEUS brain", () => {
     const response = await brain.respond(1001, "list me what you know about me from owners memory");
 
     expect(response).toContain("Yes, Sir.");
-    expect(response).toContain("Creator and Owner");
+    expect(response).toContain("creator and owner");
+    expect(response).toContain("Use /memory summary");
     expect(response).not.toContain("trusted contact");
+    expect(response).not.toContain("- You are");
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
@@ -440,3 +503,25 @@ describe("PROMETHEUS brain", () => {
     expect(groq.chat).toHaveBeenCalledTimes(2);
   });
 });
+
+function createLogStorage(options: {
+  contact: { telegram_user_id: number | null; chat_id: number | null };
+  aboutMessages: unknown[];
+}) {
+  return {
+    kind: "supabase",
+    contacts: {
+      findByContactId: vi.fn().mockResolvedValue({
+        id: "vathanya",
+        name: "Vathanya",
+        telegram_user_id: options.contact.telegram_user_id,
+        chat_id: options.contact.chat_id,
+        enabled: Boolean(options.contact.telegram_user_id || options.contact.chat_id)
+      })
+    },
+    messages: {
+      searchMessagesAboutOwner: vi.fn().mockResolvedValue(options.aboutMessages),
+      getMessagesByContactId: vi.fn().mockResolvedValue(options.aboutMessages)
+    }
+  };
+}

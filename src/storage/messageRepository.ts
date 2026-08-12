@@ -91,6 +91,29 @@ export class MessageRepository {
     return (data ?? []).reverse() as BotMessageRow[];
   }
 
+  async searchMessagesAboutOwner(contactId?: string | null, telegramUserId?: string | number | null, limit = 30): Promise<BotMessageRow[]> {
+    const ownerTerms = ["eswar", "owner", "about you", "about me"];
+    const searches = contactId
+      ? await Promise.all(ownerTerms.map((term) => this.searchMessagesByContactId({ contactId, telegramUserId, query: term, limit })))
+      : [await this.searchAllMessagesAboutOwner(limit)];
+    const unique = new Map<string, BotMessageRow>();
+    for (const row of searches.flat()) {
+      unique.set(row.id ?? `${row.telegram_user_id}:${row.created_at}:${row.text_redacted}`, row);
+    }
+    return [...unique.values()].sort((a, b) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime());
+  }
+
+  private async searchAllMessagesAboutOwner(limit = 30): Promise<BotMessageRow[]> {
+    const { data, error } = await this.supabase
+      .from("bot_messages")
+      .select("*")
+      .or("text_redacted.ilike.%eswar%,text_redacted.ilike.%owner%,text_redacted.ilike.%about you%,text_redacted.ilike.%about me%,text.ilike.%eswar%,text.ilike.%owner%,text.ilike.%about you%,text.ilike.%about me%")
+      .order("created_at", { ascending: false })
+      .limit(clampLimit(limit));
+    if (error) throw error;
+    return (data ?? []).reverse() as BotMessageRow[];
+  }
+
   async getLatestMessageForContact(contactId: string): Promise<BotMessageRow | null> {
     const { data, error } = await this.supabase
       .from("bot_messages")
@@ -101,6 +124,10 @@ export class MessageRepository {
       .maybeSingle();
     if (error) throw error;
     return data as BotMessageRow | null;
+  }
+
+  async getLatestContactInteraction(contactId: string): Promise<BotMessageRow | null> {
+    return this.getLatestMessageForContact(contactId);
   }
 
   async getMessagesToday(): Promise<BotMessageRow[]> {

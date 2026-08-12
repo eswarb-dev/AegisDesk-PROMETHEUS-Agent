@@ -27,6 +27,10 @@ export class ShareIndexRepository {
     );
   }
 
+  async getShareableEswarProfileForContact(contactId: string | null): Promise<EswarShareIndex[]> {
+    return this.getShareIndexesForContact(contactId);
+  }
+
   async listAll(): Promise<EswarShareIndex[]> {
     const { data, error } = await this.supabase
       .from("eswar_share_index")

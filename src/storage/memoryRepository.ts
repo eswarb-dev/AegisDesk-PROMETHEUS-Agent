@@ -6,6 +6,7 @@ export type MemoryItemRow = Omit<PersistentMemoryItem, "id"> & {
   id?: string;
   subject_type: "owner" | "user" | "trusted_contact" | "share_index" | "conversation_summary";
   subject_key?: string | null;
+  summary?: string | null;
 };
 
 export class MemoryRepository {
@@ -30,6 +31,24 @@ export class MemoryRepository {
 
   async getOwnerMemories(): Promise<MemoryItemRow[]> {
     return this.getByVisibility(["owner_only", "trusted_contacts", "public"]);
+  }
+
+  async getOwnerMemorySummary(): Promise<string> {
+    const memories = await this.getOwnerMemories();
+    return memories
+      .slice(0, 12)
+      .map((item) => item.summary || item.content)
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  async getOwnerMemoryNaturalFacts(): Promise<string[]> {
+    const memories = await this.getOwnerMemories();
+    return memories
+      .filter((item) => item.sensitivity !== "high")
+      .slice(0, 10)
+      .map((item) => item.summary || item.content)
+      .filter(Boolean);
   }
 
   async getSelfMemories(telegramUserId: string | number): Promise<MemoryItemRow[]> {

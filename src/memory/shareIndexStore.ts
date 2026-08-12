@@ -99,7 +99,7 @@ export class ShareIndexStore {
     const item = data.indexes.find((index) => index.key === key);
     if (!item) throw new Error("Share index key not found.");
     item.visibility = "trusted_contacts";
-    item.allowed_contacts = contactId === "all" ? ["aksharaa", "vathanya", "maddhurika"] : [contactId];
+    item.allowed_contacts = contactId === "all" ? [] : [contactId];
     await this.save(data);
     return item;
   }

@@ -7,7 +7,7 @@ export function buildAllowedMemoryContext(memory: EswarMemory, role: UserRole): 
 
   return [
     `Role: ${role}`,
-    role === "owner" ? `Owner name: ${memory.owner.name}` : "Owner profile: restricted",
+    role === "owner" || role === "trusted_contact" ? `Owner name: ${memory.owner.name}` : "Owner profile: restricted",
     role === "owner" ? `Preferred name: ${memory.owner.preferred_name}` : undefined,
     role === "owner" ? "Preferred tone: friendly, direct, loyal, lightly playful" : undefined,
     role === "owner" ? `Bot identity: ${memory.identity.bot_name}` : undefined,

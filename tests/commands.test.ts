@@ -270,6 +270,17 @@ describe("PROMETHEUS commands", () => {
     expect(ctx.replies[0]).toContain("Chat ID: 9001");
     expect(ctx.replies[0]).toContain("Owner match: true");
   });
+
+  it("/whoami describes trusted contacts without owner-match false", async () => {
+    const service = { resolveRole: async () => ({ role: "trusted_contact" }) };
+    const ctx = createMockContext({ userId: 2002, chatId: 2002, text: "/whoami", username: "aksharaa" });
+
+    await whoamiCommand(ctx, service as never, config);
+
+    expect(ctx.replies[0]).toContain("Trust worthy person to My Master Eswar");
+    expect(ctx.replies[0]).toContain("Role: trusted_contact");
+    expect(ctx.replies[0]).not.toContain("Owner match: false");
+  });
 });
 
 function createTellStorage(options: { chatId: number | null; notificationEnabled?: boolean; repaired?: boolean }) {

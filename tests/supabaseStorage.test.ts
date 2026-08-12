@@ -71,10 +71,10 @@ describe("Supabase repositories", () => {
     expect(query.eq).toHaveBeenCalledWith("visibility", "self_only");
   });
 
-  it("trusted contact cannot access owner_only memory through role filter", () => {
+  it("trusted contact can access owner_only memory through server-filtered role access", () => {
     const supabase = { from: vi.fn(() => queryMock([])) };
     const repo = new MemoryRepository(supabase as never);
 
-    expect(repo.filterForRole([{ visibility: "owner_only" } as never], "trusted_contact")).toHaveLength(0);
+    expect(repo.filterForRole([{ visibility: "owner_only" } as never], "trusted_contact")).toHaveLength(1);
   });
 });

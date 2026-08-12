@@ -245,6 +245,7 @@ function isTrustedShareableQuestion(text: string): boolean {
   const normalized = text.toLowerCase();
   if (/\b(who is your creator|who created you|your creator|creator and owner)\b/.test(normalized)) return true;
   if (/\b(are you eswar'?s agent|how do you assist him|how do you help him|what do you do for him|assist eswar|help eswar)\b/.test(normalized)) return true;
+  if (/\b(what about him|what about he|tell me about him|who is he|what is he like|how is he|does he care|will he listen|would he listen)\b/.test(normalized)) return true;
   if (!/\beswar\b/.test(normalized)) return false;
   return /\b(tell me about|can you tell me about|who is|what kind of person|what does|works on|building|will .*listen|would .*listen|should i talk|does .*care|how can i talk|communicate)\b/i.test(text);
 }
@@ -254,13 +255,13 @@ function trustedContactActorContext(contactId: string | null): string {
     "Actor:",
     "- role: trusted_contact",
     `- contact_id: ${contactId ?? "unknown"}`,
-    "- owner memory access: denied",
+    "- owner memory access: allowed only through backend-filtered context",
     "- shareable Eswar index access: allowed",
     "- private logs/admin access: denied",
     "",
     "Instruction:",
-    "You may answer questions about Eswar only from shareable_eswar_index and public/trusted_contacts memory.",
-    "You must not reveal owner_only memory, raw owner chats, private logs, admin logs, or unrelated bot memory.",
+    "You may answer questions about Eswar from shareable_eswar_index and backend-filtered owner/trusted/public memory.",
+    "You must not reveal raw owner chats, private logs, admin logs, unrelated bot memory, or memory labels like owner_only.",
     "Do not describe creator identity as irrelevant.",
     "Do not sound like a generic AI assistant.",
     "Sound natural, warm, and emotionally aware.",
@@ -397,7 +398,7 @@ function getTrustedEswarSuggestions(): string {
     "Try:",
     ...selected.map((question) => `- ${question}`),
     "",
-    "Private conversations and owner-only memory stay restricted."
+    "Raw private conversations and admin-only details stay restricted."
   ].join("\n");
 }
 

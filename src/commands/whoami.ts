@@ -22,17 +22,16 @@ export async function whoamiCommand(
     `Telegram ID: ${from?.id ?? "unknown"}`,
     `Chat ID: ${chat?.id ?? "unknown"}`,
     `Username: ${from?.username ? `@${from.username}` : "not available"}`,
-    `Name: ${displayName(from?.first_name, from?.last_name, from?.username)}`,
-    `Owner match: ${ownerMatch}`
+    `Name: ${displayName(from?.first_name, from?.last_name, from?.username)}`
   ];
 
   if (identity.role === "owner") {
-    await ctx.reply([...safeIdentity, "", "Role: owner", "Identity: Creator", "Address: Sir", "Personalised memory: full access"].join("\n"));
+    await ctx.reply([...safeIdentity, `Owner match: ${ownerMatch}`, "", "Role: owner", "Identity: Creator", "Address: Sir", "Personalised memory: full access"].join("\n"));
     return;
   }
   if (identity.role === "trusted_contact") {
-    await ctx.reply([...safeIdentity, "", "Role: trusted_contact", "Trusted memory: available", "Private owner memory: restricted"].join("\n"));
+    await ctx.reply([...safeIdentity, "", "Trust worthy person to My Master Eswar", "Role: trusted_contact", "Filtered owner memory: available", "Raw private logs: restricted"].join("\n"));
     return;
   }
-  await ctx.reply([...safeIdentity, "", "Role: user", "Personalised memory: restricted"].join("\n"));
+  await ctx.reply([...safeIdentity, `Owner match: ${ownerMatch}`, "", "Role: user", "Personalised memory: restricted"].join("\n"));
 }

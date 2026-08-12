@@ -110,7 +110,7 @@ describe("Eswar share index", () => {
 
     const shared = await store.share(state.key, "all");
     expect(shared.visibility).toBe("trusted_contacts");
-    expect(shared.allowed_contacts).toContain("vathanya");
+    expect(shared.allowed_contacts).toEqual([]);
   });
 
   it("seeds README-derived Eswar share profiles", async () => {
@@ -123,6 +123,7 @@ describe("Eswar share index", () => {
     expect(allowed.map((item) => item.key)).toContain("eswar_general_profile");
     expect(allowed.map((item) => item.key)).toContain("eswar_project_focus");
     expect(allowed.map((item) => item.key)).toContain("eswar_emotional_bridge");
+    expect((await store.listAllowed("trusted_contact", "future_contact")).map((item) => item.key)).toContain("eswar_general_profile");
     expect(publicItems.map((item) => item.key)).toEqual(["eswar_boundaries"]);
   });
 });

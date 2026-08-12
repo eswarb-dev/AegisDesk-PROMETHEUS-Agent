@@ -63,7 +63,7 @@ export class MemoryRepository {
   }
 
   async getTrustedVisibleMemories(contactId: string): Promise<MemoryItemRow[]> {
-    const memories = await this.getByVisibility(["trusted_contacts", "public"]);
+    const memories = await this.getByVisibility(["owner_only", "trusted_contacts", "public"]);
     return memories.filter((item) => !item.allowed_contacts.length || item.allowed_contacts.includes(contactId));
   }
 

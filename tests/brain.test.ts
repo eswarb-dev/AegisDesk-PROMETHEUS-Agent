@@ -330,6 +330,24 @@ describe("PROMETHEUS brain", () => {
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
+  it("trusted contact Eswar profile deduplicates repeated share index memories", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "aksharaa" } }) };
+    const groq = { chat: vi.fn() };
+    const repeated = "Eswar is practical, observant, emotionally aware, and prefers direct but friendly conversations.";
+    const storage = createShareIndexStorage([
+      { key: "eswar_general_profile", summary: repeated },
+      { key: "eswar_support_style", summary: repeated }
+    ]);
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    const response = await brain.respond(2002, "Can you tell me about Eswar?");
+
+    expect(response.match(new RegExp(repeated, "g"))?.length).toBe(1);
+    expect(response).not.toMatch(/owner memory is restricted|Public-safe mode|owner-restricted/i);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
   it("Supabase-linked trusted contact asking about Eswar does not get public restriction", async () => {
     const store = new MemoryStore();
     const groq = { chat: vi.fn() };
@@ -405,6 +423,26 @@ describe("PROMETHEUS brain", () => {
     expect(response).toContain("Eswar");
     expect(response).toContain("practical");
     expect(response).not.toMatch(/owner memory is restricted|Public-safe mode|owner-restricted/i);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("trusted contact current-work question does not hallucinate missing project details", async () => {
+    const store = new MemoryStore();
+    const contacts = { resolveRole: vi.fn().mockResolvedValue({ role: "trusted_contact", contact: { id: "aksharaa" } }) };
+    const groq = { chat: vi.fn().mockResolvedValue("Sir, Eswar's current work focus is Aurora.") };
+    const storage = createShareIndexStorage([
+      {
+        key: "eswar_general_profile",
+        summary: "Eswar is practical, observant, emotionally aware, and prefers direct but friendly conversations."
+      }
+    ]);
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), contacts as never, storage as never);
+
+    const response = await brain.respond(2002, "What is he currently working on");
+
+    expect(response).toContain("I don’t have an approved current-work note");
+    expect(response).toContain("I won’t guess project names");
+    expect(response).not.toContain("Aurora");
     expect(groq.chat).not.toHaveBeenCalled();
   });
 

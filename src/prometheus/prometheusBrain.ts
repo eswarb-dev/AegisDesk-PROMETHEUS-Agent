@@ -103,6 +103,9 @@ export class PrometheusBrain {
           `Owner intent: ${ownerIntent}`,
           "Response structure: direct answer, context/status, next command/action, optional follow-up only if needed.",
           "Do not end with a generic help question.",
+          identity.role === "trusted_contact"
+            ? "For questions about Eswar, use only Allowed Eswar share index and backend-filtered context. Never invent project names, current work, private events, collaborations, or observations. If approved context is missing, say you do not have an approved note for that detail."
+            : "",
           "",
           "User continuity memory:",
           compactText(getUserSummaryText(userMemory) || "No user-specific summary stored.", 700),
@@ -274,8 +277,9 @@ function isTrustedShareableQuestion(text: string): boolean {
   if (/\b(who is your creator|who created you|your creator|creator and owner)\b/.test(normalized)) return true;
   if (/\b(are you eswar'?s agent|how do you assist him|how do you help him|what do you do for him|assist eswar|help eswar)\b/.test(normalized)) return true;
   if (/\b(what about him|what about he|tell me about him|who is he|what is he like|how is he|does he care|will he listen|would he listen)\b/.test(normalized)) return true;
+  if (/\b(what is he currently working on|what'?s he currently working on|what is he working on|what'?s he working on|what project is he working on|current work|currently working)\b/.test(normalized)) return true;
   if (!/\beswar\b/.test(normalized)) return false;
-  return /\b(tell me about|can you tell me about|who is|what kind of person|what does|works on|building|will .*listen|would .*listen|should i talk|does .*care|how can i talk|communicate)\b/i.test(text);
+  return /\b(tell me about|can you tell me about|who is|what kind of person|what does|works on|working on|current work|currently working|building|will .*listen|would .*listen|should i talk|does .*care|how can i talk|communicate)\b/i.test(text);
 }
 
 function trustedContactActorContext(contactId: string | null): string {
@@ -349,9 +353,18 @@ function buildTrustedEswarAnswer(text: string, shareIndexes: Array<{ key: string
     ].join("\n");
   }
 
-  if (/\b(what does|works on|building|project|do)\b/i.test(lower)) {
+  if (/\b(currently working|working on|current work|project|works on|building)\b/i.test(lower)) {
+    if (!project) {
+      return [
+        "I don’t have an approved current-work note for Eswar yet.",
+        "",
+        "What I can safely share is that he is building AegisDesk around PROMETHEUS as his personal agent ecosystem.",
+        "",
+        "I won’t guess project names or details that he has not approved for trusted contacts."
+      ].join("\n");
+    }
     return [
-      project ?? "Eswar is building AegisDesk, powered by P.R.O.M.E.T.H.E.U.S.",
+      project,
       "",
       "At a safe level, it is his personal agent ecosystem — part automation, part awareness, part support system.",
       "",
@@ -362,12 +375,25 @@ function buildTrustedEswarAnswer(text: string, shareIndexes: Array<{ key: string
   return [
     "Eswar is the one who created me — PROMETHEUS — under AegisDesk.",
     "",
-    general ?? "From what I’m allowed to share, he is practical, observant, emotionally aware, and tends to act as a problem solver for people around him.",
-    "",
-    support ?? "He usually prefers honest, direct words over perfect explanations.",
+    ...uniqueAnswerLines([
+      general ?? "From what I’m allowed to share, he is practical, observant, emotionally aware, and tends to act as a problem solver for people around him.",
+      support ?? "He usually prefers honest, direct words over perfect explanations."
+    ]),
     "",
     "If you ever feel low, you don’t have to send him a perfect message. Even a simple “I’m not okay today” would be enough for him to understand that you need support."
   ].join("\n");
+}
+
+function uniqueAnswerLines(lines: string[]): string[] {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const line of lines) {
+    const key = line.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    output.push(line, "");
+  }
+  return output.slice(0, -1);
 }
 
 function validateTrustedContactResponse(text: string): boolean {

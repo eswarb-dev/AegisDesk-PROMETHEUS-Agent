@@ -128,6 +128,29 @@ describe("PROMETHEUS brain", () => {
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
+  it("includes compact recent same-chat context for natural owner replies", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn().mockResolvedValue("That makes sense, Sir.") };
+    const storage = {
+      kind: "supabase",
+      conversations: { getConversationSummary: async () => ({ short_summary: "Owner was sharing an evening event." }) },
+      shareIndexes: { getShareIndexesForContact: async () => [] },
+      messages: {
+        getRecentMessagesByTelegramUserId: async () => [
+          { direction: "inbound", text_redacted: "ill tell you what happened today evening" },
+          { direction: "outbound", text_redacted: "Tell me, Sir." }
+        ]
+      }
+    };
+    const brain = new PrometheusBrain(config, store, groq, new FallbackResponder(), undefined, storage as never);
+
+    await brain.respond(1001, "while after college hours me vathanya and aksharaa entered elevator");
+
+    const prompt = groq.chat.mock.calls[0][0].map((message: { content: string }) => message.content).join("\n");
+    expect(prompt).toContain("Recent same-chat context");
+    expect(prompt).toContain("ill tell you what happened today evening");
+  });
+
   it("owner tired emotional message gets support without ending in a question", async () => {
     const store = new MemoryStore();
     const groq = { chat: vi.fn() };

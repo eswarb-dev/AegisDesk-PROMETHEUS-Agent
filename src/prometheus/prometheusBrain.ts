@@ -96,6 +96,12 @@ export class PrometheusBrain {
       ? await subjectMemoryRepo.getSubjectInternalMemories(contactId).catch(() => [])
       : [];
     const relevantSubjectMemories = selectRelevantSubjectMemories(subjectMemories, cleanText);
+    const recentMessagesRepo = this.storage?.kind === "supabase"
+      ? (this.storage as { messages?: { getRecentMessagesByTelegramUserId?: (telegramUserId: string | number, limit?: number) => Promise<Array<{ direction?: string; text_redacted?: string | null; text?: string | null }>> } }).messages
+      : undefined;
+    const recentChat = recentMessagesRepo?.getRecentMessagesByTelegramUserId && userId
+      ? await recentMessagesRepo.getRecentMessagesByTelegramUserId(userId, 6).catch(() => [])
+      : [];
 
     if (identity.role === "trusted_contact" && isSubjectMemoryDumpQuestion(cleanText)) {
       return "I keep enough context to understand conversations better 😌\n\nBut I'm not going to dump private notes or conversations back at you.\nThat's not how I handle trust.";
@@ -129,6 +135,9 @@ export class PrometheusBrain {
           "",
           "User continuity memory:",
           compactText(getUserSummaryText(userMemory) || "No user-specific summary stored.", 700),
+          "",
+          "Recent same-chat context:",
+          formatRecentChatContext(recentChat),
           "",
           "Allowed Eswar share index:",
           ...shareIndexes.slice(0, 8).map((item) => `- ${item.key}: ${compactText(item.summary, 220)}`),
@@ -294,6 +303,18 @@ function formatContactLogAnswer(displayName: string, messages: Array<{ text_reda
     "Scope:",
     "This is only from PROMETHEUS bot logs."
   ].join("\n");
+}
+
+function formatRecentChatContext(messages: Array<{ direction?: string; text_redacted?: string | null; text?: string | null }>): string {
+  const lines = messages
+    .slice(-6)
+    .map((message) => {
+      const speaker = message.direction === "outbound" ? "PROMETHEUS" : "Owner";
+      const text = compactText(message.text_redacted || message.text || "", 180);
+      return text ? `${speaker}: ${text}` : "";
+    })
+    .filter(Boolean);
+  return lines.length ? lines.join("\n") : "None.";
 }
 
 const PROMETHEUS_OFFICIAL_EMAIL = "prometheus.inference@gmail.com";

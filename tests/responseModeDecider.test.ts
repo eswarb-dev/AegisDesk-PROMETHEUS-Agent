@@ -21,6 +21,12 @@ describe("response mode decider", () => {
     expect(decideResponseMode("what do you know about me").mode).toBe("OWNER_MEMORY_SUMMARY");
   });
 
+  it("does not route owner storytelling with contact names to log retrieval", () => {
+    const text = "while after college hours me vathanya and aksharaa entered elevator and aksharaa said eswarrr help which made me feel like protector";
+
+    expect(decideResponseMode(text)).toMatchObject({ mode: "GROQ_CHAT" });
+  });
+
   it("routes slash commands as deterministic commands", () => {
     expect(decideResponseMode("/memory").mode).toBe("DETERMINISTIC_COMMAND");
     expect(decideResponseMode("/logs vathanya").mode).toBe("DETERMINISTIC_COMMAND");

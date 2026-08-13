@@ -35,7 +35,7 @@ export function decideResponseMode(text: string): ResponseDecision {
     return { mode: "OWNER_MEMORY_SUMMARY" };
   }
 
-  if (/\b(feel|low|tired|alone|sad|not okay|panic)\b/.test(normalized)) {
+  if (/\b(i feel|feel low|not okay|panic|depressed|mental health|alert eswar|tell eswar)\b/.test(normalized)) {
     return { mode: "TRUSTED_CONTACT_SUPPORT" };
   }
 
@@ -43,7 +43,11 @@ export function decideResponseMode(text: string): ResponseDecision {
 }
 
 function isContactLogQuestion(text: string): boolean {
-  if (/\b(logs?|conversation|chatted|chat|talk|talked|asked|messaged|said)\b/.test(text) && /\b(aksharaa|vathanya|maddhurika|anyone|they|trusted contact)\b/.test(text)) {
+  const namesContact = /\b(aksharaa|vathanya|maddhurika|anyone|they|trusted contact)\b/.test(text);
+  const asksForRetrieval = /\b(what|who|when|where|whether|did|does|do|show|check|tell me|summarize|summary|list)\b/.test(text);
+  const mentionsLogAction = /\b(logs?|conversation|chatted|chat|talk|talked|asked|messaged|message)\b/.test(text);
+
+  if (namesContact && asksForRetrieval && mentionsLogAction) {
     return true;
   }
   return /\b(who|what|did anyone|what did they)\b.*\b(ask|asked|say|said|message|messaged|talk|talked|chat|chatted)\b.*\b(me|about me|eswar)\b/.test(text);

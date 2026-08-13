@@ -94,6 +94,16 @@ describe("owner-scoped admin logs", () => {
     expect(ctx.replies[0]).toContain("has not messaged PROMETHEUS yet");
   });
 
+  it("does not intercept owner storytelling about trusted contacts as log retrieval", async () => {
+    const text = "while after college hours me vathanya and aksharaa entered elevator and aksharaa said eswarrr help which made me feel like protector";
+    const ctx = createMockContext({ userId: 1001, text });
+
+    const handled = await answerOwnerLogQuestion(text, ctx, config, createSupabaseStorage() as never);
+
+    expect(handled).toBe(false);
+    expect(ctx.replies).toHaveLength(0);
+  });
+
   it("redacts secrets before storage", () => {
     expect(redactSecrets("password: hunter2 and token=abc123456789012345678901")).toContain("[REDACTED_SECRET]");
     expect(redactSecrets("OTP code 123456")).toContain("[REDACTED_SECRET]");

@@ -174,6 +174,7 @@ export async function auditCommand(ctx: Context, config: Pick<AppConfig, "ownerT
 
 export async function answerOwnerLogQuestion(text: string, ctx: Context, config: Pick<AppConfig, "ownerTelegramId">, storage: StorageProvider): Promise<boolean> {
   if (!isOwner(ctx.from?.id, config) || storage.kind !== "supabase") return false;
+  if (!isNaturalLogQuestion(text)) return false;
   const contactId = extractContactId(text);
   if (!contactId) {
     if (/who messaged you today|summari[sz]e today/i.test(text)) {
@@ -199,6 +200,16 @@ export async function answerOwnerLogQuestion(text: string, ctx: Context, config:
     await ctx.reply(messages.length ? formatMessages(`${titleCase(contactId)} — PROMETHEUS bot logs`, messages) : noMessages(contactId));
     return true;
   }
+  return false;
+}
+
+function isNaturalLogQuestion(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/[?!.,]/g, " ").replace(/\s+/g, " ").trim();
+  if (/^(who messaged you today|summari[sz]e today)\b/.test(normalized)) return true;
+  const hasContact = ALLOWED_CONTACTS.some((contact) => normalized.includes(contact));
+  if (!hasContact) return false;
+  if (/\b(did|has|have|does)\b.*\b(talk|talked|message|messaged|chat|chatted)\b.*\b(you|prometheus|bot)\b/.test(normalized)) return true;
+  if (/\b(what|show|list|summari[sz]e|check)\b.*\b(ask|asked|logs?|messages?|conversation|chat)\b/.test(normalized)) return true;
   return false;
 }
 

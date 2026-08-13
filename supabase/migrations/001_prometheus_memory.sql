@@ -96,6 +96,21 @@ create table if not exists trusted_support_events (
 
 create index if not exists trusted_support_events_contact_created_idx on trusted_support_events (contact_id, created_at desc);
 
+create table if not exists gmail_drafts (
+  id uuid primary key default gen_random_uuid(),
+  gmail_draft_id text not null,
+  owner_telegram_user_id text not null,
+  to_email text not null,
+  subject text not null,
+  body_preview text null,
+  status text not null default 'created' check (status in ('created', 'discarded')),
+  created_by_command text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists gmail_drafts_owner_created_idx on gmail_drafts (owner_telegram_user_id, created_at desc);
+
 create table if not exists owner_alerts (
   id uuid primary key default gen_random_uuid(),
   alert_type text not null,
@@ -315,6 +330,7 @@ alter table memory_items enable row level security;
 alter table conversation_summaries enable row level security;
 alter table bot_messages enable row level security;
 alter table trusted_support_events enable row level security;
+alter table gmail_drafts enable row level security;
 alter table owner_alerts enable row level security;
 alter table eswar_share_index enable row level security;
 alter table trusted_contacts enable row level security;
@@ -325,6 +341,7 @@ drop policy if exists deny_anonymous_memory_items on memory_items;
 drop policy if exists deny_anonymous_conversation_summaries on conversation_summaries;
 drop policy if exists deny_anonymous_bot_messages on bot_messages;
 drop policy if exists deny_anonymous_trusted_support_events on trusted_support_events;
+drop policy if exists deny_anonymous_gmail_drafts on gmail_drafts;
 drop policy if exists deny_anonymous_owner_alerts on owner_alerts;
 drop policy if exists deny_anonymous_eswar_share_index on eswar_share_index;
 drop policy if exists deny_anonymous_trusted_contacts on trusted_contacts;
@@ -335,6 +352,7 @@ create policy deny_anonymous_memory_items on memory_items for all using (false);
 create policy deny_anonymous_conversation_summaries on conversation_summaries for all using (false);
 create policy deny_anonymous_bot_messages on bot_messages for all using (false);
 create policy deny_anonymous_trusted_support_events on trusted_support_events for all using (false);
+create policy deny_anonymous_gmail_drafts on gmail_drafts for all using (false);
 create policy deny_anonymous_owner_alerts on owner_alerts for all using (false);
 create policy deny_anonymous_eswar_share_index on eswar_share_index for all using (false);
 create policy deny_anonymous_trusted_contacts on trusted_contacts for all using (false);

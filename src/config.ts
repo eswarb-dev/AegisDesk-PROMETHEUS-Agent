@@ -15,6 +15,13 @@ export type AppConfig = {
   nodeEnv: "development" | "test" | "production";
   port: number;
   botTimezone: string;
+  googleClientId?: string;
+  googleClientSecret?: string;
+  googleRedirectUri?: string;
+  gmailRefreshToken?: string;
+  gmailSenderEmail: string;
+  gmailSenderName: string;
+  gmailDraftsEnabled: boolean;
 };
 
 export function loadConfig(env = process.env): AppConfig {
@@ -44,7 +51,14 @@ export function loadConfig(env = process.env): AppConfig {
     supabaseAnonKey: env.SUPABASE_ANON_KEY,
     nodeEnv,
     port: Number(env.PORT ?? 3000),
-    botTimezone: env.BOT_TIMEZONE ?? "Asia/Kolkata"
+    botTimezone: env.BOT_TIMEZONE ?? "Asia/Kolkata",
+    googleClientId: env.GOOGLE_CLIENT_ID,
+    googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+    googleRedirectUri: env.GOOGLE_REDIRECT_URI,
+    gmailRefreshToken: env.GMAIL_REFRESH_TOKEN,
+    gmailSenderEmail: env.GMAIL_SENDER_EMAIL ?? "prometheus.inference@gmail.com",
+    gmailSenderName: env.GMAIL_SENDER_NAME ?? "PROMETHEUS",
+    gmailDraftsEnabled: env.GMAIL_DRAFTS_ENABLED !== "false"
   };
 }
 

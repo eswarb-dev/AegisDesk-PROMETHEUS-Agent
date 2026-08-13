@@ -9,6 +9,7 @@ import { AdminRepository } from "./adminRepository.js";
 import { ContactRepository } from "./contactRepository.js";
 import { ConversationSummaryRepository } from "./conversationSummaryRepository.js";
 import { MemoryRepository } from "./memoryRepository.js";
+import { MailDraftRepository } from "./mailDraftRepository.js";
 import { MessageRepository } from "./messageRepository.js";
 import { ShareIndexRepository } from "./shareIndexRepository.js";
 import { getSupabaseServerClient } from "./supabaseClient.js";
@@ -35,6 +36,7 @@ export type SupabaseStorageProvider = {
   admin: AdminRepository;
   messages: MessageRepository;
   support: SupportRepository;
+  mailDrafts: MailDraftRepository;
 };
 
 export type StorageProvider = JsonStorageProvider | SupabaseStorageProvider;
@@ -62,7 +64,8 @@ export function createStorageProvider(config: AppConfig): StorageProvider {
     audit: new AuditRepository(supabase),
     admin: new AdminRepository(supabase),
     messages: new MessageRepository(supabase),
-    support: new SupportRepository(supabase)
+    support: new SupportRepository(supabase),
+    mailDrafts: new MailDraftRepository(supabase)
   };
 }
 

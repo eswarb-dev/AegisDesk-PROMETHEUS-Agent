@@ -2,6 +2,7 @@ import type { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import type { AppConfig } from "../config.js";
 import { answerOwnerLogQuestion } from "../commands/adminLogs.js";
+import { handleMailDraftConfirmation } from "../commands/mail.js";
 import { userMemoryStore } from "../memory/userMemoryStore.js";
 import { PrometheusBrain } from "../prometheus/prometheusBrain.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
@@ -11,10 +12,11 @@ export function registerMessageRouter(
   bot: Telegraf,
   brain: PrometheusBrain,
   storage: StorageProvider | undefined,
-  config: Pick<AppConfig, "ownerTelegramId" | "groqApiKey" | "groqModel">
+  config: AppConfig
 ): void {
   bot.on(message("text"), async (ctx) => {
     if (ctx.message.text.startsWith("/")) return;
+    if (storage && await handleMailDraftConfirmation(ctx, config, storage)) return;
     if (storage && await answerOwnerLogQuestion(ctx.message.text, ctx, config, storage)) return;
     if (storage?.kind === "supabase" && ctx.from?.id && ctx.chat?.id) {
       const user = await storage.users.getTelegramUserById(ctx.from.id);

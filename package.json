@@ -10,7 +10,8 @@
     "test": "vitest run",
     "migrate:memory": "tsx scripts/migrate-json-to-supabase.ts",
     "cleanup:users": "tsx scripts/cleanup-duplicate-users.ts",
-    "fix:owner": "tsx scripts/fix-owner-identity.ts"
+    "fix:owner": "tsx scripts/fix-owner-identity.ts",
+    "gmail:oauth": "tsx scripts/gmail-oauth-setup.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

@@ -2,6 +2,13 @@ import type { GmailDraftConfig } from "./gmailTypes.js";
 
 export const gmailComposeScope = "https://www.googleapis.com/auth/gmail.compose";
 
+export class GmailOAuthError extends Error {
+  constructor(readonly reason: "missing_config" | "token_refresh_failed" | "code_exchange_failed") {
+    super(reason);
+    this.name = "GmailOAuthError";
+  }
+}
+
 export function buildGoogleOAuthUrl(config: Pick<GmailDraftConfig, "googleClientId" | "googleRedirectUri">): string {
   if (!config.googleClientId || !config.googleRedirectUri) throw new Error("Google OAuth client ID and redirect URI are required");
   const params = new URLSearchParams({
@@ -16,9 +23,7 @@ export function buildGoogleOAuthUrl(config: Pick<GmailDraftConfig, "googleClient
 }
 
 export async function exchangeCodeForRefreshToken(config: Pick<GmailDraftConfig, "googleClientId" | "googleClientSecret" | "googleRedirectUri">, code: string): Promise<string> {
-  if (!config.googleClientId || !config.googleClientSecret || !config.googleRedirectUri) {
-    throw new Error("Google OAuth client ID, client secret, and redirect URI are required");
-  }
+  if (!config.googleClientId || !config.googleClientSecret || !config.googleRedirectUri) throw new GmailOAuthError("missing_config");
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -31,14 +36,12 @@ export async function exchangeCodeForRefreshToken(config: Pick<GmailDraftConfig,
     })
   });
   const body = await response.json() as { refresh_token?: string; error?: string };
-  if (!response.ok || !body.refresh_token) throw new Error(body.error ?? "Unable to exchange code for refresh token");
+  if (!response.ok || !body.refresh_token) throw new GmailOAuthError("code_exchange_failed");
   return body.refresh_token;
 }
 
 export async function refreshAccessToken(config: Pick<GmailDraftConfig, "googleClientId" | "googleClientSecret" | "gmailRefreshToken">): Promise<string> {
-  if (!config.googleClientId || !config.googleClientSecret || !config.gmailRefreshToken) {
-    throw new Error("Gmail OAuth is not configured");
-  }
+  if (!config.googleClientId || !config.googleClientSecret || !config.gmailRefreshToken) throw new GmailOAuthError("missing_config");
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -50,6 +53,6 @@ export async function refreshAccessToken(config: Pick<GmailDraftConfig, "googleC
     })
   });
   const body = await response.json() as { access_token?: string; error?: string };
-  if (!response.ok || !body.access_token) throw new Error(body.error ?? "Unable to refresh Gmail access token");
+  if (!response.ok || !body.access_token) throw new GmailOAuthError("token_refresh_failed");
   return body.access_token;
 }

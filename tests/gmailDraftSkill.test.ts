@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { clearPendingMailDraftsForTest, handleMailDraftConfirmation, mailCommand } from "../src/commands/mail.js";
+import { GmailApiError } from "../src/skills/gmail/gmailClient.js";
 import { buildMimeMessage, encodeBase64Url } from "../src/skills/gmail/gmailMimeBuilder.js";
+import { GmailOAuthError } from "../src/skills/gmail/gmailOAuth.js";
 import { validateDraftInput } from "../src/skills/gmail/gmailPolicy.js";
 import { createMockContext } from "./helpers.js";
 
@@ -15,9 +17,10 @@ const config = {
   gmailSenderEmail: "prometheus.inference@gmail.com",
   gmailSenderName: "PROMETHEUS",
   gmailDraftsEnabled: true,
-  googleClientId: "client",
-  googleClientSecret: "secret",
-  gmailRefreshToken: "refresh"
+  googleClientId: "client-id-value",
+  googleClientSecret: "client-secret-value",
+  googleRedirectUri: "http://localhost:3000/oauth2callback",
+  gmailRefreshToken: "refresh-token-value"
 };
 
 function createMailStorage() {
@@ -87,13 +90,40 @@ describe("Gmail Draft Skill", () => {
 
   it("reports Gmail draft API failure safely", async () => {
     const storage = createMailStorage();
-    const gmail = { createDraft: vi.fn(async () => { throw new Error("invalid_grant"); }) };
+    const gmail = { createDraft: vi.fn(async () => { throw new GmailApiError("draft_create_failed"); }) };
     const ctx = createMockContext({ userId: 1001, text: "/mail draft test@example.com | Subject | Body" });
 
     await mailCommand(ctx, config, storage as never, { gmail });
 
-    expect(ctx.replies[0]).toContain("Gmail draft access is not available");
-    expect(ctx.replies[0]).not.toContain("invalid_grant");
+    expect(ctx.replies[0]).toContain("Gmail API could not create the draft");
+    expect(ctx.replies[0]).not.toContain("Bearer");
+  });
+
+  it("reports Gmail OAuth token refresh failure without exposing secrets", async () => {
+    const storage = createMailStorage();
+    const gmail = { createDraft: vi.fn(async () => { throw new GmailOAuthError("token_refresh_failed"); }) };
+    const ctx = createMockContext({ userId: 1001, text: "/mail draft test@example.com | Subject | Body" });
+
+    await mailCommand(ctx, config, storage as never, { gmail });
+
+    expect(ctx.replies[0]).toContain("Gmail OAuth token refresh failed");
+    expect(ctx.replies[0]).toContain("current Google client");
+    expect(ctx.replies[0]).not.toContain(config.googleClientSecret);
+    expect(ctx.replies[0]).not.toContain(config.gmailRefreshToken);
+  });
+
+  it("shows /mail status with config presence only", async () => {
+    const storage = createMailStorage();
+    const ctx = createMockContext({ userId: 1001, text: "/mail status" });
+
+    await mailCommand(ctx, config, storage as never);
+
+    expect(ctx.replies[0]).toContain("PROMETHEUS Mail Draft Status");
+    expect(ctx.replies[0]).toContain("Client ID configured: yes");
+    expect(ctx.replies[0]).toContain("Client secret configured: yes");
+    expect(ctx.replies[0]).toContain("Refresh token configured: yes");
+    expect(ctx.replies[0]).not.toContain(config.googleClientSecret);
+    expect(ctx.replies[0]).not.toContain(config.gmailRefreshToken);
   });
 
   it("validates invalid email empty subject empty body and too many recipients", async () => {

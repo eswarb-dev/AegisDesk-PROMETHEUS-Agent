@@ -11,6 +11,7 @@ import {
   OWNER_COMMANDS,
   PUBLIC_COMMANDS,
   TRUSTED_CONTACT_COMMANDS,
+  registerDefaultCommands,
   refreshCommandMenuForUser
 } from "../src/telegram/commandMenu.js";
 import { createMockContext } from "./helpers.js";
@@ -116,6 +117,13 @@ describe("role-based command menus", () => {
     expect(telegram.setMyCommands.mock.calls[0][0].map((command: { command: string }) => command.command)).toContain("admin");
     expect(telegram.setMyCommands.mock.calls[1][0].map((command: { command: string }) => command.command)).toContain("supportoff");
     expect(telegram.setMyCommands.mock.calls[2][0].map((command: { command: string }) => command.command)).not.toContain("supportoff");
+  });
+
+  it("command menu registration failure does not throw during startup", async () => {
+    const telegram = { setMyCommands: vi.fn().mockRejectedValue(new Error("network")) };
+
+    await expect(registerDefaultCommands(telegram as never)).resolves.toBeUndefined();
+    expect(telegram.setMyCommands).toHaveBeenCalled();
   });
 
   it("/start registers a role menu", async () => {

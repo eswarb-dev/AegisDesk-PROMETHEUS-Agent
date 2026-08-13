@@ -2,6 +2,7 @@ import type { Telegram } from "telegraf";
 import type { BotCommand } from "telegraf/types";
 import type { UserRole } from "../memory/memoryTypes.js";
 import type { TelegramUserRow } from "../storage/userRepository.js";
+import { logger } from "../utils/logger.js";
 
 export const PUBLIC_COMMANDS: BotCommand[] = [
   { command: "start", description: "Activate PROMETHEUS" },
@@ -32,22 +33,22 @@ export const OWNER_COMMANDS: BotCommand[] = [
 
 export async function registerDefaultCommands(telegram: Telegram): Promise<void> {
   if (!canSetCommands(telegram)) return;
-  await telegram.setMyCommands(PUBLIC_COMMANDS, { scope: { type: "default" } });
+  await safeSetMyCommands(telegram, PUBLIC_COMMANDS, { scope: { type: "default" } }, "default");
 }
 
 export async function registerOwnerCommands(telegram: Telegram, ownerChatId: string | number): Promise<void> {
   if (!canSetCommands(telegram)) return;
-  await telegram.setMyCommands(OWNER_COMMANDS, { scope: { type: "chat", chat_id: Number(ownerChatId) } });
+  await safeSetMyCommands(telegram, OWNER_COMMANDS, { scope: { type: "chat", chat_id: Number(ownerChatId) } }, "owner");
 }
 
 export async function registerTrustedContactCommands(telegram: Telegram, chatId: string | number): Promise<void> {
   if (!canSetCommands(telegram)) return;
-  await telegram.setMyCommands(TRUSTED_CONTACT_COMMANDS, { scope: { type: "chat", chat_id: Number(chatId) } });
+  await safeSetMyCommands(telegram, TRUSTED_CONTACT_COMMANDS, { scope: { type: "chat", chat_id: Number(chatId) } }, "trusted_contact");
 }
 
 export async function registerPublicCommandsForChat(telegram: Telegram, chatId: string | number): Promise<void> {
   if (!canSetCommands(telegram)) return;
-  await telegram.setMyCommands(PUBLIC_COMMANDS, { scope: { type: "chat", chat_id: Number(chatId) } });
+  await safeSetMyCommands(telegram, PUBLIC_COMMANDS, { scope: { type: "chat", chat_id: Number(chatId) } }, "public_chat");
 }
 
 export async function refreshCommandMenuForUser(
@@ -69,4 +70,17 @@ export async function refreshCommandMenuForUser(
 
 function canSetCommands(telegram: Telegram): boolean {
   return typeof (telegram as { setMyCommands?: unknown } | undefined)?.setMyCommands === "function";
+}
+
+async function safeSetMyCommands(
+  telegram: Telegram,
+  commands: BotCommand[],
+  extra: Parameters<Telegram["setMyCommands"]>[1],
+  scopeName: string
+): Promise<void> {
+  try {
+    await telegram.setMyCommands(commands, extra);
+  } catch {
+    logger.warn("telegram_command_menu_failed", { error_type: "telegram_send_failed", scope: scopeName });
+  }
 }

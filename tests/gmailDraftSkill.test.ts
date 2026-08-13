@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { clearPendingMailDraftsForTest, handleMailDraftConfirmation, mailCommand } from "../src/commands/mail.js";
-import { GmailApiError } from "../src/skills/gmail/gmailClient.js";
+import { GmailApiError, GmailClient } from "../src/skills/gmail/gmailClient.js";
 import { buildMimeMessage, encodeBase64Url } from "../src/skills/gmail/gmailMimeBuilder.js";
 import { GmailOAuthError } from "../src/skills/gmail/gmailOAuth.js";
 import { validateDraftInput } from "../src/skills/gmail/gmailPolicy.js";
@@ -298,5 +298,27 @@ describe("Gmail Draft Skill", () => {
     expect(storage.mailDrafts.markSent).toHaveBeenCalledWith(config.ownerTelegramId, "draft-new");
     expect(sendCtx.replies[0]).toContain("Draft sent, Sir");
     expect(sendCtx.replies[0]).toContain("message-1");
+  });
+
+  it("GmailClient sends drafts through Gmail drafts.send endpoint", async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "access-token" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "sent-message-1" }), { status: 200 }));
+    global.fetch = fetchMock as never;
+
+    try {
+      const client = new GmailClient(config);
+      const result = await client.sendDraft("draft-123");
+
+      expect(result).toEqual({ draftId: "draft-123", messageId: "sent-message-1" });
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "https://gmail.googleapis.com/gmail/v1/users/me/drafts/send", expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ id: "draft-123" })
+      }));
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });

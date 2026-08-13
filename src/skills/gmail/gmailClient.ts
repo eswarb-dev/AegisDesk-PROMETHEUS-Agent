@@ -64,9 +64,13 @@ export class GmailClient {
   async sendDraft(draftId: string): Promise<GmailSendResult> {
     if (!this.config.gmailDraftsEnabled) throw new GmailApiError("drafts_disabled");
     const accessToken = await refreshAccessToken(this.config);
-    const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(draftId)}/send`, {
+    const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts/send", {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` }
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ id: draftId })
     });
     const body = await response.json() as { id?: string };
     if (!response.ok || !body.id) throw new GmailApiError("draft_send_failed");

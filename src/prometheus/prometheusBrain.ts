@@ -24,7 +24,7 @@ type ChatEngine = {
 
 export class PrometheusBrain {
   constructor(
-    private readonly config: Pick<AppConfig, "ownerTelegramId" | "groqApiKey" | "groqModel">,
+    private readonly config: Pick<AppConfig, "ownerTelegramId" | "groqApiKey" | "groqModel" | "botTimezone">,
     private readonly store: MemoryStore,
     private readonly groq: ChatEngine = new GroqClient(config),
     private readonly fallback: FallbackResponder = fallbackResponder,
@@ -118,6 +118,8 @@ export class PrometheusBrain {
           identity.role === "owner" ? ownerActorContext() : "",
           identity.role === "trusted_contact" ? trustedContactActorContext(contactId) : "",
           `Owner intent: ${ownerIntent}`,
+          identity.role === "owner" ? `Current local time for Eswar: ${formatLocalTimeForPrompt(this.config.botTimezone)}` : "",
+          identity.role === "owner" ? "Use this local time for time-of-day greetings. Do not say morning/afternoon/evening unless it matches the local time or the user is explicitly talking about that period." : "",
           "Response structure: direct answer, context/status, next command/action, optional follow-up only if needed.",
           "Do not end with a generic help question.",
           identity.role === "trusted_contact" ? "For trusted contacts: reply from the current message plus server-provided context only. Do not invent motives, off-platform events, diagnoses, commitments, project details, or hidden feelings. Ask at most one question only when safety or clarity requires it." : "",
@@ -151,13 +153,13 @@ export class PrometheusBrain {
         ]);
         return validateTrustedContactResponse(retry) ? retry : buildGroundedTrustedFallback(cleanText, shareIndexes);
       }
-      if (identity.role !== "owner" || validateOwnerResponse(first, ownerIntent)) return first;
+      if (identity.role !== "owner" || validateOwnerResponse(first, ownerIntent, cleanText, this.config.botTimezone)) return first;
       const retry = await this.groq.chat([
         ...messages,
         { role: "assistant", content: first },
         { role: "user", content: "The user is Eswar B, your Creator and Owner. Address him as Sir. Do not call him bro. Answer with owner context. Do not ask a follow-up unless required." }
       ]);
-      return validateOwnerResponse(retry, ownerIntent) ? retry : deterministicOwnerFallback(cleanText, ownerIntent);
+      return validateOwnerResponse(retry, ownerIntent, cleanText, this.config.botTimezone) ? retry : deterministicOwnerFallback(cleanText, ownerIntent);
     } catch {
       if (identity.role === "trusted_contact" && isTrustedShareableQuestion(cleanText)) {
         return buildTrustedEswarAnswer(cleanText, shareIndexes);
@@ -569,6 +571,12 @@ function getUserSummaryText(memory: ConversationSummaryRow | UserMemoryRecord | 
 
 function getDirectOwnerReply(text: string): string | undefined {
   const normalized = text.toLowerCase().replace(/[?!.,]/g, "").trim();
+  if (/^(thanks|thank you|thankyou|thank you prometheus|thank you prometheus for your support|ty)$/.test(normalized)) {
+    return "You're welcome, Sir 😌\nAlways here.";
+  }
+  if (/^(yes|yes sir|yeah|yep|ok|okay|okay sir)$/.test(normalized)) {
+    return "Good, Sir 😌";
+  }
   if (/^(hi|hii|hello|hey|yo|sup|gud mrng broo|gud mrng bro|good morning bro|gm bro|morning bro)$/.test(normalized)) {
     if (/mrng|morning|gm/.test(normalized)) {
       return "Good morning, Sir 😌\nPROMETHEUS online.";
@@ -588,6 +596,19 @@ function getDirectOwnerReply(text: string): string | undefined {
     return "You are, Sir.\nYou are Eswar B — my Creator and Owner.";
   }
   return undefined;
+}
+
+function formatLocalTimeForPrompt(timezone = "Asia/Kolkata"): string {
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: timezone,
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true
+  }).format(new Date());
 }
 
 function getDeterministicOwnerReply(text: string, intent: string): string | undefined {

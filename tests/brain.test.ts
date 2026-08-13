@@ -6,7 +6,8 @@ import { PrometheusBrain } from "../src/prometheus/prometheusBrain.js";
 const config = {
   ownerTelegramId: "1001",
   groqApiKey: "test-key",
-  groqModel: "test-model"
+  groqModel: "test-model",
+  botTimezone: "Asia/Kolkata"
 };
 
 describe("PROMETHEUS brain", () => {
@@ -98,6 +99,32 @@ describe("PROMETHEUS brain", () => {
     expect(response).toContain("Locked in, Sir");
     expect(response).not.toMatch(/\?$/);
     expect(response).not.toMatch(/what's on your mind|how can i help/i);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("owner thank-you acknowledgement does not trigger a follow-up question", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, "Thank you PROMETHEUS for your support");
+
+    expect(response).toContain("You're welcome, Sir");
+    expect(response).not.toContain("I assume");
+    expect(response).not.toMatch(/\?$/);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("owner short confirmation does not become a time-of-day greeting", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, "yes sir");
+
+    expect(response).toBe("Good, Sir 😌");
+    expect(response).not.toMatch(/morning|afternoon|evening/i);
+    expect(response).not.toMatch(/\?$/);
     expect(groq.chat).not.toHaveBeenCalled();
   });
 

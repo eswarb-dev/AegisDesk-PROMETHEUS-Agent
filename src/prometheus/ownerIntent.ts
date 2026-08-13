@@ -60,15 +60,17 @@ export async function buildCapabilityResponse(text: string, storage?: StoragePro
   ].join("\n");
 }
 
-export function validateOwnerResponse(response: string, intent: OwnerIntent): boolean {
+export function validateOwnerResponse(response: string, intent: OwnerIntent, userText = "", timezone = "Asia/Kolkata"): boolean {
   const trimmed = response.trim();
   if (!trimmed) return false;
   if (/\b(how can i help|what can i help|what'?s on your mind|how can i assist)\b/i.test(trimmed)) return false;
   if (/\b(you'?re not a trusted contact|you are on eswar'?s contact list|my owner eswar|someone else|cannot access owner memory|can't access owner memory|bro|buddy|my guy|dear user)\b/i.test(trimmed)) return false;
+  if (hasWrongTimeGreeting(trimmed, timezone)) return false;
   if (intent === "capability_check" && !/\/tell|linked|not linked|can send/i.test(trimmed)) return false;
   const questions = trimmed.match(/\?/g)?.length ?? 0;
   if (questions > 1) return false;
   if (["capability_check", "command_request", "memory_question", "trusted_contact_query"].includes(intent) && trimmed.endsWith("?")) return false;
+  if (isAcknowledgementOrConfirmation(userText) && questions > 0) return false;
   return true;
 }
 
@@ -109,6 +111,25 @@ async function loadContactStates(storage?: StorageProvider): Promise<Array<{ id:
 
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[?!.,]/g, "").trim();
+}
+
+function isAcknowledgementOrConfirmation(text: string): boolean {
+  const normalized = normalize(text);
+  return /^(thanks|thank you|thankyou|ty|yes|yes sir|ok|okay|okay sir|done|cool|nice|great|good)$/.test(normalized);
+}
+
+function hasWrongTimeGreeting(response: string, timezone: string): boolean {
+  const hour = Number(new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "2-digit",
+    hour12: false
+  }).format(new Date()));
+  const normalized = response.toLowerCase();
+  if (/\bgood morning\b/.test(normalized) && (hour < 4 || hour >= 12)) return true;
+  if (/\bgood afternoon\b/.test(normalized) && (hour < 12 || hour >= 17)) return true;
+  if (/\bgood evening\b/.test(normalized) && (hour < 17 || hour >= 22)) return true;
+  if (/\bgood night\b/.test(normalized) && (hour >= 5 && hour < 21)) return true;
+  return false;
 }
 
 function titleCase(value: string): string {

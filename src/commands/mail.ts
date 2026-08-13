@@ -6,11 +6,13 @@ import { GmailApiError, GmailClient } from "../skills/gmail/gmailClient.js";
 import { GmailDraftSkill } from "../skills/gmail/gmailDraftSkill.js";
 import { checkGmailOAuth, GmailOAuthError } from "../skills/gmail/gmailOAuth.js";
 import { parseRecipients, redactEmail, validateDraftInput } from "../skills/gmail/gmailPolicy.js";
-import type { GmailDraftResult, MailDraftInput } from "../skills/gmail/gmailTypes.js";
+import type { GmailDraftResult, GmailDraftSummary, GmailSendResult, MailDraftInput } from "../skills/gmail/gmailTypes.js";
 
 type GmailApi = {
   createDraft(input: MailDraftInput): Promise<GmailDraftResult>;
   deleteDraft?(draftId: string): Promise<void>;
+  listDrafts?(limit?: number): Promise<GmailDraftSummary[]>;
+  sendDraft?(draftId: string): Promise<GmailSendResult>;
 };
 
 type MailDeps = {
@@ -112,12 +114,12 @@ export async function mailCommand(ctx: Context, config: AppConfig, storage: Stor
   }
 
   if (subcommand === "drafts") {
-    const drafts = await storage.mailDrafts.listRecent(config.ownerTelegramId, 10);
-    await ctx.reply(drafts.length ? [
-      "Recent PROMETHEUS Gmail drafts",
-      "",
-      ...drafts.map((draft) => `${draft.gmail_draft_id} | ${draft.status} | ${draft.to_email} | ${draft.subject}`)
-    ].join("\n") : "No PROMETHEUS Gmail drafts recorded yet, Sir.");
+    await listLiveDrafts(ctx, config, storage, gmail);
+    return;
+  }
+
+  if (subcommand === "send") {
+    await sendDraftBySelector(ctx, config, storage, gmail, remainder.trim());
     return;
   }
 
@@ -221,6 +223,11 @@ async function createAndRecordDraft(ctx: Context, config: AppConfig, storage: Ex
   let result: GmailDraftResult;
   try {
     result = await gmail.createDraft(draft);
+  } catch (error) {
+    await ctx.reply(`Message not drafted, Sir.\nReason: ${describeMailDraftFailure(error)}.`);
+    return;
+  }
+  try {
     await storage.mailDrafts.create({
       gmail_draft_id: result.id,
       owner_telegram_user_id: config.ownerTelegramId,
@@ -238,8 +245,7 @@ async function createAndRecordDraft(ctx: Context, config: AppConfig, storage: Ex
       safe_description: `Draft created to ${draft.to.map(redactEmail).join(", ")} with subject ${draft.subject}`
     });
   } catch (error) {
-    await ctx.reply(`Message not drafted, Sir.\nReason: ${describeMailDraftFailure(error)}.`);
-    return;
+    console.error("gmail_draft_record_failed", safeError(error));
   }
   await ctx.reply([
     "Draft created, Sir ✅",
@@ -258,6 +264,86 @@ async function createAndRecordDraft(ctx: Context, config: AppConfig, storage: Ex
     "",
     "Open Gmail drafts to review and send manually."
   ].join("\n"));
+}
+
+async function listLiveDrafts(ctx: Context, config: AppConfig, storage: Extract<StorageProvider, { kind: "supabase" }>, gmail: GmailApi): Promise<void> {
+  if (gmail.listDrafts) {
+    try {
+      const drafts = await gmail.listDrafts(10);
+      await ctx.reply(drafts.length ? [
+        "Recent Gmail drafts",
+        "",
+        ...drafts.map((draft, index) => `${index + 1}. ${draft.subject || "(no subject)"}\nTo: ${draft.to || "unknown"}\nID: ${draft.id}`),
+        "",
+        "Send one with:",
+        "/mail send <number>"
+      ].join("\n") : "No Gmail drafts found, Sir.");
+      return;
+    } catch (error) {
+      await ctx.reply(`Could not read Gmail drafts, Sir.\nReason: ${describeMailDraftFailure(error)}.`);
+      return;
+    }
+  }
+
+  const drafts = await storage.mailDrafts.listRecent(config.ownerTelegramId, 10);
+  await ctx.reply(drafts.length ? [
+    "Recent PROMETHEUS Gmail draft records",
+    "",
+    ...drafts.map((draft, index) => `${index + 1}. ${draft.status} | ${draft.to_email} | ${draft.subject}\nID: ${draft.gmail_draft_id}`),
+    "",
+    "Send one with:",
+    "/mail send <number>"
+  ].join("\n") : "No PROMETHEUS Gmail drafts recorded yet, Sir.");
+}
+
+async function sendDraftBySelector(ctx: Context, config: AppConfig, storage: Extract<StorageProvider, { kind: "supabase" }>, gmail: GmailApi, selector: string): Promise<void> {
+  if (!selector) {
+    await ctx.reply("Usage: /mail send <number|draft_id>");
+    return;
+  }
+  if (!gmail.sendDraft) {
+    await ctx.reply("Gmail draft sending is not available in this runtime, Sir.");
+    return;
+  }
+  let draftId = selector;
+  if (/^\d+$/.test(selector)) {
+    if (!gmail.listDrafts) {
+      await ctx.reply("Send by number requires live Gmail draft listing, Sir.");
+      return;
+    }
+    const index = Number(selector) - 1;
+    const drafts = await gmail.listDrafts(10);
+    const selected = drafts[index];
+    if (!selected) {
+      await ctx.reply("Draft number not found, Sir.\nUse /mail drafts to see the latest draft count.");
+      return;
+    }
+    draftId = selected.id;
+  }
+
+  try {
+    const result = await gmail.sendDraft(draftId);
+    try {
+      await storage.mailDrafts.markSent?.(config.ownerTelegramId, draftId);
+      await storage.audit.writeAuditLog({
+        actor_telegram_user_id: config.ownerTelegramId,
+        action: "gmail_draft_sent",
+        target_table: "gmail_drafts",
+        target_id: draftId,
+        safe_description: "Gmail draft sent by owner command"
+      });
+    } catch (error) {
+      console.error("gmail_draft_sent_record_failed", safeError(error));
+    }
+    await ctx.reply([
+      "Draft sent, Sir.",
+      "",
+      `Gmail draft: ${result.draftId}`,
+      `Message: ${result.messageId ?? "sent"}`
+    ].join("\n"));
+  } catch (error) {
+    await ctx.reply(`Draft not sent, Sir.\nReason: ${describeMailDraftFailure(error)}.`);
+  }
 }
 
 function validateGmailConfig(config: AppConfig): { ok: true } | { ok: false; reason: string } {
@@ -286,6 +372,8 @@ function describeMailDraftFailure(error: unknown): string {
     if (error.reason === "draft_create_failed") {
       return "Gmail API could not create the draft. Confirm Gmail API is enabled and the OAuth scope includes gmail.compose";
     }
+    if (error.reason === "draft_list_failed") return "Gmail API could not list drafts";
+    if (error.reason === "draft_send_failed") return "Gmail API could not send the draft";
     return "Gmail API could not discard the draft";
   }
   return "Gmail draft access is not available right now";
@@ -331,11 +419,17 @@ function mailHelp(): string {
     "/mail status",
     "/mail diagnose",
     "/mail drafts",
+    "/mail send <number|draft_id>",
     "/mail preview <draft_id>",
     "/mail discard <draft_id>",
     "",
-    "Phase 1 creates Gmail drafts only. It does not send emails."
+    "Drafts are created first. Sending requires /mail send."
   ].join("\n");
+}
+
+function safeError(error: unknown): string {
+  if (error instanceof Error) return error.name;
+  return "unknown_error";
 }
 
 async function mailDiagnose(config: AppConfig): Promise<string> {

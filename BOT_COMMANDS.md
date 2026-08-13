@@ -36,6 +36,7 @@ Telegram command menus are scoped by role to reduce clutter. Menu visibility is 
 - `/whoami`
 - `/memory`
 - `/contacts`
+- `/mail`
 - `/admin`
 - `/support`
 
@@ -114,6 +115,21 @@ Access control reminder: hiding a command from the Telegram menu does not grant 
 | `/support settings` | Owner only | Shows support-alert limits and scope rules. |
 | `/supportoff` | Approved trusted contacts only | Disables non-critical support memory for that contact. Critical safety handling remains active. |
 | `/help support` | Owner only | Shows owner support commands. |
+
+## Mail Draft Commands
+
+| Command | Access | Description |
+| --- | --- | --- |
+| `/mail` | Owner only | Shows PROMETHEUS Mail Draft Skill help. |
+| `/mail status` | Owner only | Shows Gmail draft env/config presence without exposing secrets. |
+| `/mail diagnose` | Owner only | Checks whether Google accepts the configured Gmail refresh token. |
+| `/mail draft <to> \| <subject> \| <message>` | Owner only | Creates a Gmail draft in the PROMETHEUS mail account. It does not send immediately. |
+| `/mail draft_ai <to> \| <purpose>` | Owner only | Builds an AI-assisted draft preview that requires `CONFIRM DRAFT` before Gmail draft creation. |
+| `/mail drafts` | Owner only | Lists recent live Gmail drafts with numbers. |
+| `/mail send <number>` | Owner only | Sends the numbered draft from `/mail drafts`, such as `/mail send 1`. |
+| `/mail send <draft_id>` | Owner only | Sends a specific Gmail draft ID. |
+| `/mail preview <draft_id>` | Owner only | Shows the stored PROMETHEUS draft record preview, when Supabase recorded it. |
+| `/mail discard <draft_id>` | Owner only | Discards a Gmail draft and marks the local record discarded when available. |
 
 ## Natural Owner Questions
 

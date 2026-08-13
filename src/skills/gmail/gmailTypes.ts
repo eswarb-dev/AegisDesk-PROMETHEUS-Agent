@@ -21,7 +21,7 @@ export type GmailDraftRecord = {
   to_email: string;
   subject: string;
   body_preview?: string | null;
-  status: "created" | "discarded";
+  status: "created" | "discarded" | "sent";
   created_by_command?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -29,5 +29,19 @@ export type GmailDraftRecord = {
 
 export type GmailDraftResult = {
   id: string;
+  messageId?: string;
+};
+
+export type GmailDraftSummary = {
+  id: string;
+  messageId?: string;
+  subject?: string;
+  to?: string;
+  snippet?: string;
+  internalDate?: number;
+};
+
+export type GmailSendResult = {
+  draftId: string;
   messageId?: string;
 };

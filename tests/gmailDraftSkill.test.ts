@@ -35,7 +35,8 @@ function createMailStorage() {
       }),
       listRecent: vi.fn(async () => records),
       findByDraftId: vi.fn(async (_owner, draftId) => records.find((record) => (record as { gmail_draft_id: string }).gmail_draft_id === draftId) ?? null),
-      markDiscarded: vi.fn(async () => undefined)
+      markDiscarded: vi.fn(async () => undefined),
+      markSent: vi.fn(async () => undefined)
     },
     audit: {
       writeAuditLog: vi.fn(async (input) => {
@@ -97,6 +98,19 @@ describe("Gmail Draft Skill", () => {
 
     expect(ctx.replies[0]).toContain("Gmail API could not create the draft");
     expect(ctx.replies[0]).not.toContain("Bearer");
+  });
+
+  it("reports draft created even if local draft record storage fails", async () => {
+    const storage = createMailStorage();
+    storage.mailDrafts.create.mockRejectedValueOnce(new Error("database write failed"));
+    const gmail = { createDraft: vi.fn(async () => ({ id: "draft-created-in-gmail" })) };
+    const ctx = createMockContext({ userId: 1001, text: "/mail draft test@example.com | Subject | Body" });
+
+    await mailCommand(ctx, config, storage as never, { gmail });
+
+    expect(ctx.replies[0]).toContain("Draft created, Sir");
+    expect(ctx.replies[0]).toContain("draft-created-in-gmail");
+    expect(ctx.replies[0]).not.toContain("database write failed");
   });
 
   it("reports Gmail OAuth token refresh failure without exposing secrets", async () => {
@@ -259,5 +273,30 @@ describe("Gmail Draft Skill", () => {
     await mailCommand(discardCtx, config, storage as never, { gmail });
     expect(gmail.deleteDraft).toHaveBeenCalledWith("draft-1");
     expect(gmail.send).not.toHaveBeenCalled();
+  });
+
+  it("lists live Gmail drafts and sends a draft by number", async () => {
+    const storage = createMailStorage();
+    const gmail = {
+      createDraft: vi.fn(async () => ({ id: "draft-1" })),
+      listDrafts: vi.fn(async () => [
+        { id: "draft-new", subject: "Newest", to: "test@example.com", snippet: "Body", internalDate: 2000 },
+        { id: "draft-old", subject: "Older", to: "test@example.com", snippet: "Body", internalDate: 1000 }
+      ]),
+      sendDraft: vi.fn(async (draftId: string) => ({ draftId, messageId: "message-1" }))
+    };
+
+    const listCtx = createMockContext({ userId: 1001, text: "/mail drafts" });
+    await mailCommand(listCtx, config, storage as never, { gmail });
+    expect(listCtx.replies[0]).toContain("1. Newest");
+    expect(listCtx.replies[0]).toContain("/mail send <number>");
+
+    const sendCtx = createMockContext({ userId: 1001, text: "/mail send 1" });
+    await mailCommand(sendCtx, config, storage as never, { gmail });
+
+    expect(gmail.sendDraft).toHaveBeenCalledWith("draft-new");
+    expect(storage.mailDrafts.markSent).toHaveBeenCalledWith(config.ownerTelegramId, "draft-new");
+    expect(sendCtx.replies[0]).toContain("Draft sent, Sir");
+    expect(sendCtx.replies[0]).toContain("message-1");
   });
 });

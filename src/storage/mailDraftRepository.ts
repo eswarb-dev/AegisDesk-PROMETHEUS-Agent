@@ -44,4 +44,13 @@ export class MailDraftRepository {
       .eq("gmail_draft_id", draftId);
     if (error) throw error;
   }
+
+  async markSent(ownerTelegramUserId: string, draftId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from("gmail_drafts")
+      .update({ status: "sent", updated_at: new Date().toISOString() })
+      .eq("owner_telegram_user_id", ownerTelegramUserId)
+      .eq("gmail_draft_id", draftId);
+    if (error) throw error;
+  }
 }

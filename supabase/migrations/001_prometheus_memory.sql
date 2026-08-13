@@ -103,13 +103,27 @@ create table if not exists gmail_drafts (
   to_email text not null,
   subject text not null,
   body_preview text null,
-  status text not null default 'created' check (status in ('created', 'discarded')),
+  status text not null default 'created' check (status in ('created', 'discarded', 'sent')),
   created_by_command text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
 
 create index if not exists gmail_drafts_owner_created_idx on gmail_drafts (owner_telegram_user_id, created_at desc);
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.table_constraints
+    where constraint_schema = 'public'
+      and table_name = 'gmail_drafts'
+      and constraint_name = 'gmail_drafts_status_check'
+  ) then
+    alter table gmail_drafts drop constraint gmail_drafts_status_check;
+  end if;
+  alter table gmail_drafts add constraint gmail_drafts_status_check check (status in ('created', 'discarded', 'sent'));
+end $$;
 
 create table if not exists owner_alerts (
   id uuid primary key default gen_random_uuid(),

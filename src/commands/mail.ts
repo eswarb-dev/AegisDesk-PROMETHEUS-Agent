@@ -146,9 +146,13 @@ export async function mailCommand(ctx: Context, config: AppConfig, storage: Stor
       await ctx.reply("Draft record not found, Sir.");
       return;
     }
-    await gmail.deleteDraft?.(draftId);
-    await storage.mailDrafts.markDiscarded(config.ownerTelegramId, draftId);
-    await ctx.reply(`Draft discarded, Sir.\nGmail draft: ${draftId}`);
+    try {
+      await gmail.deleteDraft?.(draftId);
+      await storage.mailDrafts.markDiscarded(config.ownerTelegramId, draftId);
+      await ctx.reply(`Draft discarded, Sir.\nGmail draft: ${draftId}`);
+    } catch {
+      await ctx.reply("Draft discard failed, Sir.\nReason: Gmail draft access is not available right now.");
+    }
     return;
   }
 
@@ -198,23 +202,34 @@ async function createAndRecordDraft(ctx: Context, config: AppConfig, storage: Ex
     await ctx.reply(`Message not drafted, Sir.\nReason: ${policy.reason}.`);
     return;
   }
-  const result = await gmail.createDraft(draft);
-  await storage.mailDrafts.create({
-    gmail_draft_id: result.id,
-    owner_telegram_user_id: config.ownerTelegramId,
-    to_email: draft.to.join(", "),
-    subject: draft.subject,
-    body_preview: previewText(draft.body, 300),
-    status: "created",
-    created_by_command: command
-  });
-  await storage.audit.writeAuditLog({
-    actor_telegram_user_id: config.ownerTelegramId,
-    action: "gmail_draft_created",
-    target_table: "gmail_drafts",
-    target_id: result.id,
-    safe_description: `Draft created to ${draft.to.map(redactEmail).join(", ")} with subject ${draft.subject}`
-  });
+  const configCheck = validateGmailConfig(config);
+  if (!configCheck.ok) {
+    await ctx.reply(`Message not drafted, Sir.\nReason: ${configCheck.reason}.`);
+    return;
+  }
+  let result: GmailDraftResult;
+  try {
+    result = await gmail.createDraft(draft);
+    await storage.mailDrafts.create({
+      gmail_draft_id: result.id,
+      owner_telegram_user_id: config.ownerTelegramId,
+      to_email: draft.to.join(", "),
+      subject: draft.subject,
+      body_preview: previewText(draft.body, 300),
+      status: "created",
+      created_by_command: command
+    });
+    await storage.audit.writeAuditLog({
+      actor_telegram_user_id: config.ownerTelegramId,
+      action: "gmail_draft_created",
+      target_table: "gmail_drafts",
+      target_id: result.id,
+      safe_description: `Draft created to ${draft.to.map(redactEmail).join(", ")} with subject ${draft.subject}`
+    });
+  } catch {
+    await ctx.reply("Message not drafted, Sir.\nReason: Gmail draft access is not available right now. Check OAuth env vars and refresh token.");
+    return;
+  }
   await ctx.reply([
     "Draft created, Sir ✅",
     "",
@@ -232,6 +247,17 @@ async function createAndRecordDraft(ctx: Context, config: AppConfig, storage: Ex
     "",
     "Open Gmail drafts to review and send manually."
   ].join("\n"));
+}
+
+function validateGmailConfig(config: AppConfig): { ok: true } | { ok: false; reason: string } {
+  if (!config.gmailDraftsEnabled) return { ok: false, reason: "Gmail drafts are disabled" };
+  if (!config.googleClientId || !config.googleClientSecret || !config.gmailRefreshToken) {
+    return { ok: false, reason: "Gmail OAuth is not configured" };
+  }
+  if (config.gmailSenderEmail.toLowerCase() !== "prometheus.inference@gmail.com") {
+    return { ok: false, reason: "Gmail sender is not configured as PROMETHEUS official mail" };
+  }
+  return { ok: true };
 }
 
 function parseDraftCommand(input: string): { ok: true; draft: MailDraftInput } | { ok: false; reason: string } {

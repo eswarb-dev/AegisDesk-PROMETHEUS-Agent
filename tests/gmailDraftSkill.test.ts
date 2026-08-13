@@ -14,7 +14,10 @@ const config = {
   port: 3000,
   gmailSenderEmail: "prometheus.inference@gmail.com",
   gmailSenderName: "PROMETHEUS",
-  gmailDraftsEnabled: true
+  gmailDraftsEnabled: true,
+  googleClientId: "client",
+  googleClientSecret: "secret",
+  gmailRefreshToken: "refresh"
 };
 
 function createMailStorage() {
@@ -69,6 +72,28 @@ describe("Gmail Draft Skill", () => {
     expect(storage.audit.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: "gmail_draft_created" }));
     expect(ctx.replies[0]).toContain("Draft created, Sir");
     expect(ctx.replies[0]).toContain("draft-1");
+  });
+
+  it("reports missing Gmail OAuth config instead of throwing backend hiccup", async () => {
+    const storage = createMailStorage();
+    const gmail = { createDraft: vi.fn(async () => { throw new Error("should not call"); }) };
+    const ctx = createMockContext({ userId: 1001, text: "/mail draft test@example.com | Subject | Body" });
+
+    await mailCommand(ctx, { ...config, googleClientId: undefined, gmailRefreshToken: undefined }, storage as never, { gmail });
+
+    expect(ctx.replies[0]).toContain("Gmail OAuth is not configured");
+    expect(gmail.createDraft).not.toHaveBeenCalled();
+  });
+
+  it("reports Gmail draft API failure safely", async () => {
+    const storage = createMailStorage();
+    const gmail = { createDraft: vi.fn(async () => { throw new Error("invalid_grant"); }) };
+    const ctx = createMockContext({ userId: 1001, text: "/mail draft test@example.com | Subject | Body" });
+
+    await mailCommand(ctx, config, storage as never, { gmail });
+
+    expect(ctx.replies[0]).toContain("Gmail draft access is not available");
+    expect(ctx.replies[0]).not.toContain("invalid_grant");
   });
 
   it("validates invalid email empty subject empty body and too many recipients", async () => {

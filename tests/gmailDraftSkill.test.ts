@@ -209,8 +209,14 @@ describe("Gmail Draft Skill", () => {
     const raw = encodeBase64Url(mime);
 
     expect(mime).toContain("From: PROMETHEUS <prometheus.inference@gmail.com>");
+    expect(mime).toContain("Content-Type: multipart/alternative");
     expect(mime).toContain("Content-Type: text/plain; charset=UTF-8");
+    expect(mime).toContain("Content-Type: text/html; charset=UTF-8");
     expect(mime).toContain(prometheusMailSignature);
+    expect(mime).toContain("<strong>PROMETHEUS</strong>");
+    expect(mime).toContain("<em>Personalised Agent to Eswar B</em>");
+    expect(mime).toContain("<strong>AEGISDESK // AGENT SYSTEM</strong>");
+    expect(mime).not.toContain("**PROMETHEUS**");
     expect(raw).not.toMatch(/[+/=]/);
   });
 
@@ -223,7 +229,8 @@ describe("Gmail Draft Skill", () => {
       body: `Body\n\n${prometheusMailSignature}`
     });
 
-    expect(mime.match(/\*\*PROMETHEUS\*\*/g)).toHaveLength(1);
+    expect(mime.match(/^PROMETHEUS$/gm)).toHaveLength(1);
+    expect(mime.match(/<strong>PROMETHEUS<\/strong>/g)).toHaveLength(1);
   });
 
   it("AI draft creates pending preview and confirm creates Gmail draft", async () => {

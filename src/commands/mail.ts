@@ -4,7 +4,7 @@ import { GroqClient } from "../prometheus/groqClient.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
 import { GmailApiError, GmailClient } from "../skills/gmail/gmailClient.js";
 import { GmailDraftSkill } from "../skills/gmail/gmailDraftSkill.js";
-import { GmailOAuthError } from "../skills/gmail/gmailOAuth.js";
+import { checkGmailOAuth, GmailOAuthError } from "../skills/gmail/gmailOAuth.js";
 import { parseRecipients, redactEmail, validateDraftInput } from "../skills/gmail/gmailPolicy.js";
 import type { GmailDraftResult, MailDraftInput } from "../skills/gmail/gmailTypes.js";
 
@@ -51,6 +51,11 @@ export async function mailCommand(ctx: Context, config: AppConfig, storage: Stor
 
   if (subcommand === "status") {
     await ctx.reply(mailStatus(config));
+    return;
+  }
+
+  if (subcommand === "diagnose") {
+    await ctx.reply(await mailDiagnose(config));
     return;
   }
 
@@ -270,9 +275,11 @@ function describeMailDraftFailure(error: unknown): string {
   if (error instanceof GmailOAuthError) {
     if (error.reason === "missing_config") return "Gmail OAuth is not configured";
     if (error.reason === "token_refresh_failed") {
-      return "Gmail OAuth token refresh failed. Generate a new refresh token with the current Google client, then update Render";
+      const code = error.googleErrorCode ? ` Google error: ${error.googleErrorCode}.` : "";
+      return `Gmail OAuth token refresh failed.${code} Generate a new refresh token with the current Google client, then update Render`;
     }
-    return "Gmail OAuth code exchange failed. Recreate the authorization link and finish OAuth with the same Google client";
+    const code = error.googleErrorCode ? ` Google error: ${error.googleErrorCode}.` : "";
+    return `Gmail OAuth code exchange failed.${code} Recreate the authorization link and finish OAuth with the same Google client`;
   }
   if (error instanceof GmailApiError) {
     if (error.reason === "drafts_disabled") return "Gmail drafts are disabled";
@@ -322,11 +329,46 @@ function mailHelp(): string {
     "/mail draft <to> | <subject> | <message>",
     "/mail draft_ai <to> | <purpose>",
     "/mail status",
+    "/mail diagnose",
     "/mail drafts",
     "/mail preview <draft_id>",
     "/mail discard <draft_id>",
     "",
     "Phase 1 creates Gmail drafts only. It does not send emails."
+  ].join("\n");
+}
+
+async function mailDiagnose(config: AppConfig): Promise<string> {
+  const configCheck = validateGmailConfig(config);
+  if (!configCheck.ok) {
+    return [
+      "PROMETHEUS Mail OAuth Diagnose",
+      "",
+      `Status: failed`,
+      `Reason: ${configCheck.reason}`,
+      "",
+      "No secrets are shown."
+    ].join("\n");
+  }
+  const result = await checkGmailOAuth(config);
+  if (result.ok) {
+    return [
+      "PROMETHEUS Mail OAuth Diagnose",
+      "",
+      "Status: passed",
+      "Token refresh: accepted by Google",
+      "",
+      "No secrets are shown."
+    ].join("\n");
+  }
+  return [
+    "PROMETHEUS Mail OAuth Diagnose",
+    "",
+    "Status: failed",
+    "Token refresh: rejected by Google",
+    `Google error: ${result.googleErrorCode ?? "unknown"}`,
+    "",
+    "No secrets are shown."
   ].join("\n");
 }
 

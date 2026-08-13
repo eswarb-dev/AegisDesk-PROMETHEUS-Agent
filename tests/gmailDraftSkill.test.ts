@@ -101,13 +101,53 @@ describe("Gmail Draft Skill", () => {
 
   it("reports Gmail OAuth token refresh failure without exposing secrets", async () => {
     const storage = createMailStorage();
-    const gmail = { createDraft: vi.fn(async () => { throw new GmailOAuthError("token_refresh_failed"); }) };
+    const gmail = { createDraft: vi.fn(async () => { throw new GmailOAuthError("token_refresh_failed", "invalid_grant"); }) };
     const ctx = createMockContext({ userId: 1001, text: "/mail draft test@example.com | Subject | Body" });
 
     await mailCommand(ctx, config, storage as never, { gmail });
 
     expect(ctx.replies[0]).toContain("Gmail OAuth token refresh failed");
+    expect(ctx.replies[0]).toContain("Google error: invalid_grant");
     expect(ctx.replies[0]).toContain("current Google client");
+    expect(ctx.replies[0]).not.toContain(config.googleClientSecret);
+    expect(ctx.replies[0]).not.toContain(config.gmailRefreshToken);
+  });
+
+  it("diagnoses Gmail OAuth refresh without exposing secrets", async () => {
+    const storage = createMailStorage();
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ error: "invalid_grant", error_description: "sensitive detail" }), { status: 400 })) as never;
+    const ctx = createMockContext({ userId: 1001, text: "/mail diagnose" });
+
+    try {
+      await mailCommand(ctx, config, storage as never);
+    } finally {
+      global.fetch = originalFetch;
+    }
+
+    expect(ctx.replies[0]).toContain("PROMETHEUS Mail OAuth Diagnose");
+    expect(ctx.replies[0]).toContain("Status: failed");
+    expect(ctx.replies[0]).toContain("Google error: invalid_grant");
+    expect(ctx.replies[0]).not.toContain("sensitive detail");
+    expect(ctx.replies[0]).not.toContain(config.googleClientSecret);
+    expect(ctx.replies[0]).not.toContain(config.gmailRefreshToken);
+  });
+
+  it("diagnoses Gmail OAuth token endpoint network failure safely", async () => {
+    const storage = createMailStorage();
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn(async () => { throw new Error("connect ECONNRESET"); }) as never;
+    const ctx = createMockContext({ userId: 1001, text: "/mail diagnose" });
+
+    try {
+      await mailCommand(ctx, config, storage as never);
+    } finally {
+      global.fetch = originalFetch;
+    }
+
+    expect(ctx.replies[0]).toContain("Status: failed");
+    expect(ctx.replies[0]).toContain("Google error: network_error");
+    expect(ctx.replies[0]).not.toContain("ECONNRESET");
     expect(ctx.replies[0]).not.toContain(config.googleClientSecret);
     expect(ctx.replies[0]).not.toContain(config.gmailRefreshToken);
   });

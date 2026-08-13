@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { clearPendingMailDraftsForTest, handleMailDraftConfirmation, mailCommand } from "../src/commands/mail.js";
 import { GmailApiError, GmailClient } from "../src/skills/gmail/gmailClient.js";
-import { buildMimeMessage, encodeBase64Url } from "../src/skills/gmail/gmailMimeBuilder.js";
+import { buildMimeMessage, encodeBase64Url, prometheusMailSignature } from "../src/skills/gmail/gmailMimeBuilder.js";
 import { GmailOAuthError } from "../src/skills/gmail/gmailOAuth.js";
 import { validateDraftInput } from "../src/skills/gmail/gmailPolicy.js";
 import { createMockContext } from "./helpers.js";
@@ -210,7 +210,20 @@ describe("Gmail Draft Skill", () => {
 
     expect(mime).toContain("From: PROMETHEUS <prometheus.inference@gmail.com>");
     expect(mime).toContain("Content-Type: text/plain; charset=UTF-8");
+    expect(mime).toContain(prometheusMailSignature);
     expect(raw).not.toMatch(/[+/=]/);
+  });
+
+  it("does not duplicate PROMETHEUS mail signature", () => {
+    const mime = buildMimeMessage({
+      fromEmail: "prometheus.inference@gmail.com",
+      fromName: "PROMETHEUS",
+      to: ["test@example.com"],
+      subject: "Hello",
+      body: `Body\n\n${prometheusMailSignature}`
+    });
+
+    expect(mime.match(/\*\*PROMETHEUS\*\*/g)).toHaveLength(1);
   });
 
   it("AI draft creates pending preview and confirm creates Gmail draft", async () => {

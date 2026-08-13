@@ -63,6 +63,16 @@ export class UserRepository {
     return this.getTelegramUserById(telegramUserId);
   }
 
+  async listBroadcastRecipients(): Promise<Array<Pick<TelegramUserRow, "telegram_user_id" | "chat_id" | "role" | "contact_id">>> {
+    const { data, error } = await this.supabase
+      .from("telegram_users")
+      .select("telegram_user_id, chat_id, role, contact_id")
+      .not("chat_id", "is", null)
+      .order("last_seen_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as Array<Pick<TelegramUserRow, "telegram_user_id" | "chat_id" | "role" | "contact_id">>;
+  }
+
   async repairOwnerIdentity(input: {
     telegramUserId: string;
     chatId?: string | null;

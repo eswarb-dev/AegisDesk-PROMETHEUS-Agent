@@ -12,6 +12,7 @@ Telegram command menus are scoped by role to reduce clutter. Menu visibility is 
 - `/help`
 - `/about`
 - `/ping`
+- `/play`
 - `/privacy`
 - `/forgetme`
 - `/whoami`
@@ -22,6 +23,7 @@ Telegram command menus are scoped by role to reduce clutter. Menu visibility is 
 - `/help`
 - `/about`
 - `/ping`
+- `/play`
 - `/privacy`
 - `/forgetme`
 - `/whoami`
@@ -33,10 +35,12 @@ Telegram command menus are scoped by role to reduce clutter. Menu visibility is 
 - `/help`
 - `/about`
 - `/ping`
+- `/play`
 - `/whoami`
 - `/memory`
 - `/contacts`
 - `/mail`
+- `/notify`
 - `/admin`
 - `/support`
 
@@ -61,6 +65,7 @@ Access control reminder: hiding a command from the Telegram menu does not grant 
 | `/help` | All users | Shows the basic command help. |
 | `/about` | All users | Shows PROMETHEUS identity and capability boundaries. |
 | `/ping` | All users | Checks whether the bot is online and returns latency. |
+| `/play <song or artist>` | All users | Returns playable YouTube Music and Spotify search links. PROMETHEUS does not claim direct playback without a real music/device integration. |
 | `/privacy` | All users | Explains memory, bot-log storage, owner review scope, and trusted-contact support alerts. |
 | `/forgetme` | Non-owner users, with confirmation | Deletes stored PROMETHEUS memory, conversation summary, and bot-message history for that user after `CONFIRM FORGETME`. |
 | `/whoami` | All users | Shows Telegram ID, chat ID, role, and owner-match status. |
@@ -87,6 +92,7 @@ Access control reminder: hiding a command from the Telegram menu does not grant 
 | `/trust <telegram_user_id> <contact_id>` | Owner only | Approves a pending user as a trusted contact. Allowed contacts: `aksharaa`, `vathanya`, `maddhurika`. |
 | `/untrust <contact_id>` | Owner only | Revokes a trusted contact link. |
 | `/tell <contact_id> <message>` | Owner only | Sends a direct bot message to an approved trusted contact. |
+| `/notify <message>` | Owner only | Broadcasts an owner-written message to all stored bot users with known chat IDs, using the Telegram send queue. |
 | `/help contacts` | Owner only | Shows trusted-contact management commands. |
 
 ## Admin Log Commands

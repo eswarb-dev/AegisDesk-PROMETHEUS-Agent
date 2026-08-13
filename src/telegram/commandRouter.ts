@@ -18,7 +18,9 @@ import { forgetmeCommand } from "../commands/forgetme.js";
 import { helpCommand } from "../commands/help.js";
 import { memoryCommand } from "../commands/memory.js";
 import { mailCommand } from "../commands/mail.js";
+import { notifyCommand } from "../commands/notify.js";
 import { pingCommand } from "../commands/ping.js";
+import { playCommand } from "../commands/play.js";
 import { privacyCommand } from "../commands/privacy.js";
 import { shareindexCommand } from "../commands/shareindex.js";
 import { startCommand } from "../commands/start.js";
@@ -45,6 +47,8 @@ export function registerCommands(
   bot.command("ping", pingCommand);
   bot.command("memory", (ctx) => memoryCommand(ctx, config, store, storage));
   bot.command("mail", (ctx) => mailCommand(ctx, config, storage));
+  bot.command("notify", (ctx) => notifyCommand(ctx, config, storage));
+  bot.command("play", playCommand);
   bot.command("users", (ctx) => usersCommand(ctx, config, storage));
   bot.command("contacts", (ctx) => storage.kind === "supabase" ? ownerContactsCommand(ctx, config, storage) : contactsCommand(ctx, config, contacts, storage));
   bot.command("logs", (ctx) => logsCommand(ctx, config, storage));

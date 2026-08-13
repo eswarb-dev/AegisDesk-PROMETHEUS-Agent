@@ -15,6 +15,8 @@ create table if not exists telegram_users (
   last_seen_at timestamptz
 );
 
+create index if not exists telegram_users_chat_last_seen_idx on telegram_users (chat_id, last_seen_at desc);
+
 create table if not exists memory_items (
   id uuid primary key default gen_random_uuid(),
   owner_telegram_user_id text not null,

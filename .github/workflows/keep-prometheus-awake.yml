@@ -16,5 +16,15 @@ jobs:
           PROMETHEUS_HEALTH_URL: ${{ secrets.PROMETHEUS_RENDER_HEALTH_URL }}
         run: |
           echo "Pinging PROMETHEUS Render service..."
+          if [ -z "$PROMETHEUS_HEALTH_URL" ]; then
+            echo "Missing GitHub secret: PROMETHEUS_RENDER_HEALTH_URL"
+            echo "Expected format: https://<render-service>.onrender.com/health"
+            exit 1
+          fi
+          if ! printf '%s' "$PROMETHEUS_HEALTH_URL" | grep -Eq '^https://[^[:space:]]+/health$'; then
+            echo "Invalid PROMETHEUS_RENDER_HEALTH_URL format."
+            echo "Expected format: https://<render-service>.onrender.com/health"
+            exit 1
+          fi
           curl --fail --silent --show-error --max-time 25 "$PROMETHEUS_HEALTH_URL"
           echo "PROMETHEUS ping completed."

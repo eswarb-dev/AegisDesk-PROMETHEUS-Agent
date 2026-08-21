@@ -12,6 +12,7 @@ Telegram command menus are scoped by role to reduce clutter. Menu visibility is 
 - `/help`
 - `/about`
 - `/ping`
+- `/engine`
 - `/play`
 - `/privacy`
 - `/forgetme`
@@ -82,7 +83,16 @@ Access control reminder: hiding a command from the Telegram menu does not grant 
 | `/memory user <contact_id>` | Owner only | Shows memory/conversation summary for a trusted contact, such as `aksharaa`. |
 | `/shareindex` | Owner only | Manages or views approved share-index memory. |
 | `/state` | Owner only | Shows runtime/config state relevant to PROMETHEUS. |
+| `/engine` | Owner only | Shows Render, Groq, memory, fallback, and last Groq success/failure status without exposing secrets. |
 | `/help owner` | Owner only | Shows owner memory commands. |
+
+## Render And Engine Health
+
+| Endpoint / Setting | Access | Description |
+| --- | --- | --- |
+| `GET /health` | Public HTTP health check | Lightweight Render health endpoint. It reports uptime, timestamp, memory status, and cached Groq state without calling Groq. |
+| `GET /health/groq` | Operational check | Performs a tiny Groq `reply ok` check and returns safe status/error type only. Do not schedule this as a keep-awake ping. |
+| `PROMETHEUS_RENDER_HEALTH_URL` | GitHub Actions secret | Set this to `https://<render-service>.onrender.com/health` for the keep-awake workflow. |
 
 ## Trusted Contact Management
 

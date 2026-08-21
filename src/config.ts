@@ -6,6 +6,8 @@ export type AppConfig = {
   telegramBotToken: string;
   groqApiKey?: string;
   groqModel: string;
+  groqModelPrimary?: string;
+  groqModelFallback?: string;
   ownerTelegramId: string;
   botPublicUrl?: string;
   databaseProvider: "json" | "supabase";
@@ -42,7 +44,9 @@ export function loadConfig(env = process.env): AppConfig {
   return {
     telegramBotToken,
     groqApiKey: env.GROQ_API_KEY,
-    groqModel: env.GROQ_MODEL ?? "llama-3.1-8b-instant",
+    groqModel: env.GROQ_MODEL_PRIMARY ?? env.GROQ_MODEL ?? "llama-3.1-8b-instant",
+    groqModelPrimary: env.GROQ_MODEL_PRIMARY ?? env.GROQ_MODEL ?? "llama-3.1-8b-instant",
+    groqModelFallback: env.GROQ_MODEL_FALLBACK,
     ownerTelegramId,
     botPublicUrl: env.BOT_PUBLIC_URL,
     databaseProvider,

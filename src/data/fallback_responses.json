@@ -9,9 +9,7 @@
     "Owner memory is active, Sir, but this section is still light."
   ],
   "owner_api_error": [
-    "I'm online, Sir. Groq is catching its breath for a moment, so I'm staying in fallback mode.",
-    "Thinking engine is slow right now, Sir. Basic mode is still active.",
-    "I'm here in fallback mode, Sir. The deeper reply engine missed that one, so I won't pretend."
+    "Groq is not responding cleanly right now, Sir. I’m switching to basic mode."
   ],
   "owner_unknown": [
     "I don't have that in memory yet, Sir.",

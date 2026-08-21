@@ -34,6 +34,35 @@ describe("Groq error handling", () => {
 
     await expect(client.chat([{ role: "user", content: "hello" }])).rejects.toEqual(new GroqError("groq_invalid_response"));
   });
+
+  it("attempts fallback model once after a primary network error", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("bad gateway", { status: 502 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "fallback online" } }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new GroqClient(
+      { groqApiKey: "secret-key", groqModel: "primary", groqModelPrimary: "primary", groqModelFallback: "fallback" },
+      1000,
+      0
+    );
+
+    await expect(client.chat([{ role: "user", content: "hello" }])).resolves.toBe("fallback online");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe("primary");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).model).toBe("fallback");
+  });
+
+  it("returns structured safe error status after model failure", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("bad gateway", { status: 502 })));
+    const client = new GroqClient({ groqApiKey: "secret-key", groqModel: "primary" }, 1000, 0);
+
+    await expect(client.chatWithStatus([{ role: "user", content: "hello" }])).resolves.toMatchObject({
+      ok: false,
+      errorType: "groq_network_error",
+      fallbackUsed: true
+    });
+  });
 });
 
 describe("Telegram per-user rate limiter", () => {

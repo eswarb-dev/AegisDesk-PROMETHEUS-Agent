@@ -14,6 +14,7 @@ import {
   usersCommand
 } from "../commands/adminLogs.js";
 import { contactsCommand } from "../commands/contacts.js";
+import { engineCommand } from "../commands/engine.js";
 import { forgetmeCommand } from "../commands/forgetme.js";
 import { helpCommand } from "../commands/help.js";
 import { memoryCommand } from "../commands/memory.js";
@@ -45,6 +46,7 @@ export function registerCommands(
   bot.help((ctx) => helpCommand(ctx, config, contacts, storage));
   bot.command("about", aboutCommand);
   bot.command("ping", pingCommand);
+  bot.command("engine", (ctx) => engineCommand(ctx, config));
   bot.command("memory", (ctx) => memoryCommand(ctx, config, store, storage));
   bot.command("mail", (ctx) => mailCommand(ctx, config, storage));
   bot.command("notify", (ctx) => notifyCommand(ctx, config, storage));

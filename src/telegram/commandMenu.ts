@@ -25,6 +25,7 @@ export const OWNER_COMMANDS: BotCommand[] = [
   { command: "help", description: "Show owner command groups" },
   { command: "about", description: "About PROMETHEUS" },
   { command: "ping", description: "Check connectivity" },
+  { command: "engine", description: "Runtime engine status" },
   { command: "whoami", description: "Show Telegram ID and role" },
   { command: "memory", description: "Memory status and controls" },
   { command: "contacts", description: "Trusted contact panel" },

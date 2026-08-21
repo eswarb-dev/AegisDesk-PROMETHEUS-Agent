@@ -12,6 +12,8 @@ import type { ResolvedTelegramIdentity } from "../contacts/trustedContactTypes.j
 import type { UserRole } from "../memory/memoryTypes.js";
 import { isPrivateEswarQuestion, resolveAccessProfile } from "../security/accessControl.js";
 import { normalizeText } from "../utils/safeText.js";
+import { logger } from "../utils/logger.js";
+import { shouldSendColdStartNotice } from "./engineStatus.js";
 import { fallbackResponder, type FallbackResponder } from "./fallbackResponder.js";
 import { GroqClient, type ChatMessage } from "./groqClient.js";
 import { buildCapabilityResponse, classifyOwnerIntent, deterministicOwnerFallback, validateOwnerResponse } from "./ownerIntent.js";
@@ -24,7 +26,7 @@ type ChatEngine = {
 
 export class PrometheusBrain {
   constructor(
-    private readonly config: Pick<AppConfig, "ownerTelegramId" | "groqApiKey" | "groqModel" | "botTimezone">,
+    private readonly config: Pick<AppConfig, "ownerTelegramId" | "groqApiKey" | "groqModel" | "botTimezone"> & Partial<Pick<AppConfig, "groqModelPrimary" | "groqModelFallback">>,
     private readonly store: MemoryStore,
     private readonly groq: ChatEngine = new GroqClient(config),
     private readonly fallback: FallbackResponder = fallbackResponder,
@@ -37,6 +39,7 @@ export class PrometheusBrain {
     const emailReply = getOfficialEmailReply(cleanText);
     if (emailReply) return emailReply;
     const identity = await this.resolveIdentity(userId);
+    const chatKey = userId ? String(userId) : "unknown";
     const access = {
       role: identity.role,
       canUsePrivateMemory: identity.role === "owner"
@@ -78,6 +81,11 @@ export class PrometheusBrain {
       }
       const ownerDeterministic = getDeterministicOwnerReply(cleanText, ownerIntent);
       if (ownerDeterministic) return ownerDeterministic;
+    }
+
+    if (process.env.NODE_ENV !== "test" && identity.role === "owner" && shouldSendColdStartNotice(chatKey) && !text.trim().startsWith("/")) {
+      logger.info("cold_start_detected", { role: "owner" });
+      return "PROMETHEUS just woke up, Sir. Give me a few seconds to restore full mode.";
     }
 
     const memory = await this.store.loadMemory();
@@ -170,13 +178,18 @@ export class PrometheusBrain {
       ]);
       return validateOwnerResponse(retry, ownerIntent, cleanText, this.config.botTimezone) ? retry : deterministicOwnerFallback(cleanText, ownerIntent);
     } catch {
+      logger.warn("groq_fallback_used", { role: identity.role });
       if (identity.role === "trusted_contact" && isTrustedShareableQuestion(cleanText)) {
         return buildTrustedEswarAnswer(cleanText, shareIndexes);
       }
       if (/who|what|when|where|remember|memory|know/i.test(cleanText)) {
-        return identity.role === "owner" ? this.fallback.pick("owner_unknown") : this.fallback.pick("non_owner");
+        return identity.role === "owner"
+          ? this.fallback.pick("owner_unknown", { chatId: chatKey, userText: cleanText })
+          : this.fallback.pick("non_owner", { chatId: chatKey, userText: cleanText });
       }
-      return identity.role === "owner" ? this.fallback.pick("owner_api_error") : this.fallback.pick("non_owner");
+      return identity.role === "owner"
+        ? this.fallback.pick("owner_api_error", { chatId: chatKey, userText: cleanText })
+        : this.fallback.pick("non_owner", { chatId: chatKey, userText: cleanText });
     }
   }
 
@@ -192,7 +205,8 @@ export class PrometheusBrain {
         { role: "user", content: normalizeText(text) }
       ]);
     } catch {
-      return this.fallback.pick("non_owner");
+      logger.warn("groq_fallback_used", { role: "public" });
+      return this.fallback.pick("non_owner", { userText: text });
     }
   }
 

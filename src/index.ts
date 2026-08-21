@@ -7,11 +7,35 @@ import { createBot } from "./telegram/bot.js";
 import { registerCommandMenu } from "./telegram/menu.js";
 import { TELEGRAM_WEBHOOK_PATH, registerWebhook } from "./telegram/webhook.js";
 import { logger } from "./utils/logger.js";
+import { getEngineSnapshot } from "./prometheus/engineStatus.js";
+import { GroqClient } from "./prometheus/groqClient.js";
 
 export function createApp() {
   const app = express();
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "prometheus-telegram-chatbot" });
+    const snapshot = getEngineSnapshot(config);
+    logger.info("render_health_ping");
+    res.json({
+      status: "ok",
+      service: "prometheus-telegram-bot",
+      uptime_seconds: snapshot.uptimeSeconds,
+      timestamp: new Date().toISOString(),
+      memory: snapshot.memory,
+      groq: snapshot.groq
+    });
+  });
+  app.get("/health/groq", async (_req, res) => {
+    const result = await new GroqClient(config, 5000, 0).healthCheck();
+    if (result.ok) {
+      res.json({ groq: "ok", model: result.model, latency_ms: result.latencyMs });
+      return;
+    }
+    res.status(503).json({
+      groq: "degraded",
+      error_type: result.errorType,
+      model: result.model ?? config.groqModel,
+      latency_ms: result.latencyMs
+    });
   });
   return app;
 }

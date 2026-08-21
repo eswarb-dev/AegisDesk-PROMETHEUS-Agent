@@ -1,0 +1,20 @@
+name: Keep PROMETHEUS Render Awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Ping PROMETHEUS health endpoint
+        env:
+          PROMETHEUS_HEALTH_URL: ${{ secrets.PROMETHEUS_RENDER_HEALTH_URL }}
+        run: |
+          echo "Pinging PROMETHEUS Render service..."
+          curl --fail --silent --show-error --max-time 25 "$PROMETHEUS_HEALTH_URL"
+          echo "PROMETHEUS ping completed."

@@ -13,6 +13,12 @@ export function planCoreReply(input: ReplyPlanInput): string | null {
   const normalized = input.text.toLowerCase().replace(/[?!.,]/g, " ").replace(/\s+/g, " ").trim();
   if (input.role === "owner") {
     if (/^(prometheus|are you here|you there|here)\b/.test(normalized)) return "Here, Sir. Basic mode or full engine, I’m with you.";
+    if (/^(full engine|activate full engine|full mode)\b/.test(normalized)) return "Full engine active, Sir.";
+    if (/^(how'?s going|how is going|how are you|how are things)\b/.test(normalized)) return "All good, Sir 😌 I’m here and tracking the flow.";
+    if (/^(of course|sure|sure thing|just a casual one|casual one|both)\b/.test(normalized)) return "Got it, Sir 😌 We’ll keep it casual and natural.";
+    if (/\b(celebrated|celebration|festival|onam)\b/.test(normalized)) {
+      return "Sounds good, Sir 🎉 That kind of college festival moment gives the day a lighter feel.";
+    }
     if (/\b(who created you|who is your creator|your creator)\b/.test(normalized)) return "You are, Sir.\nEswar B — my Creator and Owner.";
     if (/\b(dont leave|don't leave|not okay|alone|lonely)\b/.test(normalized)) return "I’m here, Sir. Full engine or not, I won’t disappear.";
     if (/\b(tired mind|tired|drained)\b/.test(normalized)) return "Understood, Sir. Tired mind mode — we go light first. water, face wash, one small reset, then one small step.";

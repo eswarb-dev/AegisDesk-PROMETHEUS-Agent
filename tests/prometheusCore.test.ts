@@ -26,6 +26,19 @@ describe("PROMETHEUS core response modes", () => {
   it("routes complex drafting to Groq assisted mode", () => {
     expect(decideCoreResponseMode("draft a detailed email explaining the project", "owner")).toBe("GROQ_ASSISTED_REPLY");
   });
+
+  it("handles casual owner chat without forcing questions", () => {
+    const going = prometheusCore.decide({ role: "owner", text: "how's going" });
+    const casual = prometheusCore.decide({ role: "owner", text: "just a casual one" });
+    const event = prometheusCore.decide({ role: "owner", text: "today in my college we celebrated onam festival" });
+
+    expect(going.deterministicReply).toContain("All good, Sir");
+    expect(casual.deterministicReply).toContain("Got it, Sir");
+    expect(event.deterministicReply).toContain("Sounds good, Sir");
+    expect(going.deterministicReply).not.toMatch(/\?$/);
+    expect(casual.deterministicReply).not.toMatch(/\?$/);
+    expect(event.deterministicReply).not.toMatch(/\?$/);
+  });
 });
 
 describe("PROMETHEUS adaptive learning", () => {

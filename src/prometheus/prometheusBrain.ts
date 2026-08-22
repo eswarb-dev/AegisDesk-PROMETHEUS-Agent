@@ -180,7 +180,7 @@ export class PrometheusBrain {
       const retry = await this.groq.chat([
         ...messages,
         { role: "assistant", content: first },
-        { role: "user", content: "The user is Eswar B, your Creator and Owner. Address him as Sir. Do not call him bro. Answer with owner context. Do not ask a follow-up unless required." }
+        { role: "user", content: "Rewrite answer-first for Eswar B, your Creator and Owner. Address him as Sir. Do not call him bro. Do not ask a follow-up for casual chat, acknowledgements, simple confirmations, or shared events. Only ask one question when the user directly asks for help, requests a choice, or safety/clarity requires it." }
       ]);
       return validateOwnerResponse(retry, ownerIntent, cleanText, this.config.botTimezone) ? retry : deterministicOwnerFallback(cleanText, ownerIntent);
     } catch {

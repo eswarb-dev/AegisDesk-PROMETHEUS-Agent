@@ -71,6 +71,7 @@ export function validateOwnerResponse(response: string, intent: OwnerIntent, use
   if (questions > 1) return false;
   if (["capability_check", "command_request", "memory_question", "trusted_contact_query"].includes(intent) && trimmed.endsWith("?")) return false;
   if (isAcknowledgementOrConfirmation(userText) && questions > 0) return false;
+  if (hasUnneededQuestion(trimmed, userText, intent)) return false;
   return true;
 }
 
@@ -115,7 +116,19 @@ function normalize(text: string): string {
 
 function isAcknowledgementOrConfirmation(text: string): boolean {
   const normalized = normalize(text);
-  return /^(thanks|thank you|thankyou|ty|yes|yes sir|ok|okay|okay sir|done|cool|nice|great|good)$/.test(normalized);
+  return /^(thanks|thank you|thankyou|ty|yes|yes sir|ok|okay|okay sir|done|cool|nice|great|good|of course|sure|sure thing|both|just a casual one|casual one)$/.test(normalized);
+}
+
+function hasUnneededQuestion(response: string, userText: string, intent: OwnerIntent): boolean {
+  if (!response.includes("?")) return false;
+  const normalizedResponse = response.toLowerCase();
+  if (/\b(anything else|anything in particular|what sparks your interest|what would you like|what'?s on your mind|how can i help|how can i assist)\b/.test(normalizedResponse)) return true;
+  if (intent === "emotional_state" || intent === "support_request") return false;
+  const normalizedUser = normalize(userText);
+  const userAskedQuestion = /\?$/.test(userText.trim()) || /^(why|what|how|when|where|who|which|can|could|should|would|will|do|does|did|is|are)\b/.test(normalizedUser);
+  if (!userAskedQuestion && /\?$/.test(response.trim())) return true;
+  if (!userAskedQuestion && /\b(did they|was it|were there|do you want|want me to)\b/.test(normalizedResponse)) return true;
+  return false;
 }
 
 function hasWrongTimeGreeting(response: string, timezone: string): boolean {

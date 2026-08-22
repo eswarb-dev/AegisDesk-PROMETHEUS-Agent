@@ -12,7 +12,9 @@ export type PrometheusIntent =
 export function detectIntent(text: string): PrometheusIntent {
   const normalized = normalize(text);
   if (normalized.startsWith("/")) return "command";
-  if (/^(hi|hii|hello|hey|yo|prometheus|are you here|you there)\b/.test(normalized)) return "greeting";
+  if (/^(hi|hii|hello|hey|yo|prometheus|are you here|you there|how'?s going|how is going|how are you|how are things)\b/.test(normalized)) return "greeting";
+  if (/^(of course|sure|sure thing|just a casual one|casual one|both)\b/.test(normalized)) return "greeting";
+  if (/\b(celebrated|celebration|festival|onam)\b/.test(normalized)) return "greeting";
   if (/\b(who are you|who created you|who is your creator|your creator|owner|are you prometheus)\b/.test(normalized)) return "identity";
   if (/\b(what do you know about me|owner memory|memory summary|tell me about myself|describe me)\b/.test(normalized)) return "owner_memory";
   if (/\b(i feel|not okay|not ok|alone|lonely|tired|tired mind|sad|mood off|overwhelmed|stress|anxious|don't leave|dont leave|depressed|crying|worthless|end it|suicide|kill myself)\b/.test(normalized)) return "emotional_support";

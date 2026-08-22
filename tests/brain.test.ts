@@ -830,6 +830,34 @@ describe("PROMETHEUS brain", () => {
     expect(groq.chat).toHaveBeenCalledTimes(2);
   });
 
+  it("casual owner chat does not trigger repeated follow-up questions", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    await expect(brain.respond(1001, "how's going")).resolves.toBe("All good, Sir 😌 I’m here and tracking the flow.");
+    await expect(brain.respond(1001, "of course")).resolves.toBe("Got it, Sir 😌 We’ll keep it casual and natural.");
+    await expect(brain.respond(1001, "today in my college we celebrated onam festival")).resolves.toContain("Sounds good, Sir");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("regenerates Groq owner reply when it asks an unnecessary casual question", async () => {
+    const store = new MemoryStore();
+    const groq = {
+      chat: vi
+        .fn()
+        .mockResolvedValueOnce("Sounds festive, Sir 🎉 Did they have a traditional feast or any special performances?")
+        .mockResolvedValueOnce("Sounds festive, Sir 🎉 Onam celebration in college usually gives the day a lighter, warmer feel.")
+    };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, "i saw a nice campus event today");
+
+    expect(response).not.toMatch(/\?$/);
+    expect(response).not.toContain("Did they");
+    expect(groq.chat).toHaveBeenCalledTimes(2);
+  });
+
   it("validator fallback handles repeated bad Groq responses", async () => {
     const store = new MemoryStore();
     const groq = {

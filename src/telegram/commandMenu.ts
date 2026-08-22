@@ -11,6 +11,8 @@ export const PUBLIC_COMMANDS: BotCommand[] = [
   { command: "ping", description: "Check connectivity" },
   { command: "play", description: "Open music search links" },
   { command: "privacy", description: "Memory/privacy policy" },
+  { command: "style", description: "Show learned reply style" },
+  { command: "learnmode", description: "Adaptive learning status" },
   { command: "forgetme", description: "Delete stored PROMETHEUS memory" },
   { command: "whoami", description: "Show Telegram ID and role" }
 ];
@@ -28,6 +30,7 @@ export const OWNER_COMMANDS: BotCommand[] = [
   { command: "engine", description: "Runtime engine status" },
   { command: "whoami", description: "Show Telegram ID and role" },
   { command: "memory", description: "Memory status and controls" },
+  { command: "learning", description: "Adaptive learning events" },
   { command: "contacts", description: "Trusted contact panel" },
   { command: "notify", description: "Broadcast owner message" },
   { command: "admin", description: "Owner admin/log command groups" },

@@ -8,6 +8,6 @@ describe("owner response validation", () => {
   });
 
   it("rejects mismatched local time greetings", () => {
-    expect(validateOwnerResponse("Good morning, Sir.", "casual_chat", "yes sir", "Etc/GMT+3")).toBe(false);
+    expect(validateOwnerResponse("Good morning, Sir.", "casual_chat", "yes sir", "UTC")).toBe(false);
   });
 });

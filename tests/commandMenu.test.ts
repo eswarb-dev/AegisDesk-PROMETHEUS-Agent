@@ -30,7 +30,7 @@ function withTelegram(ctx: ReturnType<typeof createMockContext>) {
 
 describe("role-based command menus", () => {
   it("public command menu contains only public commands", () => {
-    expect(PUBLIC_COMMANDS.map((command) => command.command)).toEqual(["start", "help", "about", "ping", "play", "privacy", "forgetme", "whoami"]);
+    expect(PUBLIC_COMMANDS.map((command) => command.command)).toEqual(["start", "help", "about", "ping", "play", "privacy", "style", "learnmode", "forgetme", "whoami"]);
     expect(PUBLIC_COMMANDS.some((command) => command.command === "logs")).toBe(false);
   });
 
@@ -41,7 +41,7 @@ describe("role-based command menus", () => {
 
   it("owner menu is compact and omits detailed log commands", () => {
     const commands = OWNER_COMMANDS.map((command) => command.command);
-    expect(commands).toEqual(["start", "help", "about", "ping", "engine", "whoami", "memory", "contacts", "notify", "admin", "support"]);
+    expect(commands).toEqual(["start", "help", "about", "ping", "engine", "whoami", "memory", "learning", "contacts", "notify", "admin", "support"]);
     expect(commands).not.toContain("logs");
     expect(commands).not.toContain("chat");
     expect(commands).not.toContain("export");

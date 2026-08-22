@@ -44,9 +44,9 @@ export function loadConfig(env = process.env): AppConfig {
   return {
     telegramBotToken,
     groqApiKey: env.GROQ_API_KEY,
-    groqModel: env.GROQ_MODEL_PRIMARY ?? env.GROQ_MODEL ?? "llama-3.1-8b-instant",
-    groqModelPrimary: env.GROQ_MODEL_PRIMARY ?? env.GROQ_MODEL ?? "llama-3.1-8b-instant",
-    groqModelFallback: env.GROQ_MODEL_FALLBACK,
+    groqModel: env.GROQ_MODEL_PRIMARY ?? env.GROQ_MODEL ?? "openai/gpt-oss-20b",
+    groqModelPrimary: env.GROQ_MODEL_PRIMARY ?? env.GROQ_MODEL ?? "openai/gpt-oss-20b",
+    groqModelFallback: env.GROQ_MODEL_FALLBACK ?? "qwen/qwen3.6-27b",
     ownerTelegramId,
     botPublicUrl: env.BOT_PUBLIC_URL,
     databaseProvider,

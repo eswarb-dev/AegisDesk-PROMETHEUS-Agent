@@ -15,6 +15,8 @@ Telegram command menus are scoped by role to reduce clutter. Menu visibility is 
 - `/engine`
 - `/play`
 - `/privacy`
+- `/style`
+- `/learnmode`
 - `/forgetme`
 - `/whoami`
 
@@ -26,6 +28,9 @@ Telegram command menus are scoped by role to reduce clutter. Menu visibility is 
 - `/ping`
 - `/play`
 - `/privacy`
+- `/style`
+- `/learnmode`
+- `/feedback`
 - `/forgetme`
 - `/whoami`
 - `/supportoff`
@@ -39,6 +44,9 @@ Telegram command menus are scoped by role to reduce clutter. Menu visibility is 
 - `/play`
 - `/whoami`
 - `/memory`
+- `/learning`
+- `/style`
+- `/learnmode`
 - `/contacts`
 - `/mail`
 - `/notify`
@@ -68,6 +76,13 @@ Access control reminder: hiding a command from the Telegram menu does not grant 
 | `/ping` | All users | Checks whether the bot is online and returns latency. |
 | `/play <song or artist>` | All users | Returns playable YouTube Music and Spotify search links. PROMETHEUS does not claim direct playback without a real music/device integration. |
 | `/privacy` | All users | Explains memory, bot-log storage, owner review scope, and trusted-contact support alerts. |
+| `/style` | All users | Shows the safe learned reply-style profile for the current user. |
+| `/resetstyle` | All users | Deletes the current user's learned reply-style profile. |
+| `/learnmode` | All users | Shows adaptive learning status and scope. |
+| `/learnmode on` | All users | Enables adaptive style learning for the current user. |
+| `/learnmode off` | All users | Disables adaptive style learning for the current user. |
+| `/feedback good` | All users | Marks the previous PROMETHEUS reply as useful style feedback. |
+| `/feedback bad` | All users | Marks the previous PROMETHEUS reply as poor style feedback and allows a correction afterward. |
 | `/forgetme` | Non-owner users, with confirmation | Deletes stored PROMETHEUS memory, conversation summary, and bot-message history for that user after `CONFIRM FORGETME`. |
 | `/whoami` | All users | Shows Telegram ID, chat ID, role, and owner-match status. |
 | `/help trusted` | Trusted contacts and owner | Shows trusted-contact available commands. |
@@ -84,6 +99,9 @@ Access control reminder: hiding a command from the Telegram menu does not grant 
 | `/shareindex` | Owner only | Manages or views approved share-index memory. |
 | `/state` | Owner only | Shows runtime/config state relevant to PROMETHEUS. |
 | `/engine` | Owner only | Shows Render, Groq, memory, fallback, and last Groq success/failure status without exposing secrets. |
+| `/learning events` | Owner only | Lists recent adaptive learning events. |
+| `/learning apply <event_id>` | Owner only | Marks a learning event applied after review. |
+| `/learning reject <event_id>` | Owner only | Marks a learning event rejected. |
 | `/help owner` | Owner only | Shows owner memory commands. |
 
 ## Render And Engine Health

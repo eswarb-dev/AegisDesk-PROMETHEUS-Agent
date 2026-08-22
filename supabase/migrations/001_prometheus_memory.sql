@@ -63,6 +63,38 @@ create table if not exists conversation_summaries (
   updated_at timestamptz default now()
 );
 
+create table if not exists user_style_profiles (
+  id uuid primary key default gen_random_uuid(),
+  telegram_user_id text unique not null,
+  role text not null,
+  contact_id text null,
+  address_preference text null,
+  slang_terms text[] default '{}',
+  emoji_preference text default 'natural',
+  preferred_reply_length text default 'short',
+  preferred_tone text default 'warm_direct',
+  emotional_support_style text null,
+  dislikes text[] default '{}',
+  repeated_topics text[] default '{}',
+  confidence numeric default 0.5,
+  learning_enabled boolean default true,
+  updated_at timestamptz default now(),
+  created_at timestamptz default now()
+);
+
+create table if not exists learning_events (
+  id uuid primary key default gen_random_uuid(),
+  telegram_user_id text not null,
+  event_type text not null,
+  observation text not null,
+  memory_update jsonb null,
+  confidence numeric default 0.5,
+  applied boolean default false,
+  created_at timestamptz default now()
+);
+
+create index if not exists learning_events_user_created_idx on learning_events (telegram_user_id, created_at desc);
+
 create table if not exists bot_messages (
   id uuid primary key default gen_random_uuid(),
   telegram_user_id text not null,
@@ -344,6 +376,8 @@ create table if not exists memory_audit_logs (
 alter table telegram_users enable row level security;
 alter table memory_items enable row level security;
 alter table conversation_summaries enable row level security;
+alter table user_style_profiles enable row level security;
+alter table learning_events enable row level security;
 alter table bot_messages enable row level security;
 alter table trusted_support_events enable row level security;
 alter table gmail_drafts enable row level security;
@@ -355,6 +389,8 @@ alter table memory_audit_logs enable row level security;
 drop policy if exists deny_anonymous_telegram_users on telegram_users;
 drop policy if exists deny_anonymous_memory_items on memory_items;
 drop policy if exists deny_anonymous_conversation_summaries on conversation_summaries;
+drop policy if exists deny_anonymous_user_style_profiles on user_style_profiles;
+drop policy if exists deny_anonymous_learning_events on learning_events;
 drop policy if exists deny_anonymous_bot_messages on bot_messages;
 drop policy if exists deny_anonymous_trusted_support_events on trusted_support_events;
 drop policy if exists deny_anonymous_gmail_drafts on gmail_drafts;
@@ -366,6 +402,8 @@ drop policy if exists deny_anonymous_memory_audit_logs on memory_audit_logs;
 create policy deny_anonymous_telegram_users on telegram_users for all using (false);
 create policy deny_anonymous_memory_items on memory_items for all using (false);
 create policy deny_anonymous_conversation_summaries on conversation_summaries for all using (false);
+create policy deny_anonymous_user_style_profiles on user_style_profiles for all using (false);
+create policy deny_anonymous_learning_events on learning_events for all using (false);
 create policy deny_anonymous_bot_messages on bot_messages for all using (false);
 create policy deny_anonymous_trusted_support_events on trusted_support_events for all using (false);
 create policy deny_anonymous_gmail_drafts on gmail_drafts for all using (false);

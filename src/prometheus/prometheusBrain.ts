@@ -16,6 +16,7 @@ import { logger } from "../utils/logger.js";
 import { shouldSendColdStartNotice } from "./engineStatus.js";
 import { fallbackResponder, type FallbackResponder } from "./fallbackResponder.js";
 import { GroqClient, type ChatMessage } from "./groqClient.js";
+import { prometheusCore } from "./core/prometheusCore.js";
 import { buildCapabilityResponse, classifyOwnerIntent, deterministicOwnerFallback, validateOwnerResponse } from "./ownerIntent.js";
 import { NON_OWNER_SYSTEM_PROMPT, PROMETHEUS_SYSTEM_PROMPT } from "./prometheusPersona.js";
 import { decideResponseMode, type ResponseDecision } from "./responseModeDecider.js";
@@ -40,6 +41,11 @@ export class PrometheusBrain {
     if (emailReply) return emailReply;
     const identity = await this.resolveIdentity(userId);
     const chatKey = userId ? String(userId) : "unknown";
+    const styleProfile = this.storage?.kind === "supabase" && userId && this.storage.styles
+      ? await this.storage.styles.getProfile(userId).catch(() => null)
+      : null;
+    const coreDecision = prometheusCore.decide({ role: identity.role, text: cleanText, style: styleProfile });
+    if (coreDecision.deterministicReply) return coreDecision.deterministicReply;
     const access = {
       role: identity.role,
       canUsePrivateMemory: identity.role === "owner"
@@ -187,9 +193,9 @@ export class PrometheusBrain {
           ? this.fallback.pick("owner_unknown", { chatId: chatKey, userText: cleanText })
           : this.fallback.pick("non_owner", { chatId: chatKey, userText: cleanText });
       }
-      return identity.role === "owner"
-        ? this.fallback.pick("owner_api_error", { chatId: chatKey, userText: cleanText })
-        : this.fallback.pick("non_owner", { chatId: chatKey, userText: cleanText });
+      if (identity.role === "owner") return prometheusCore.basicFallback("owner", cleanText);
+      if (identity.role === "trusted_contact") return prometheusCore.basicFallback("trusted_contact", cleanText);
+      return this.fallback.pick("non_owner", { chatId: chatKey, userText: cleanText });
     }
   }
 

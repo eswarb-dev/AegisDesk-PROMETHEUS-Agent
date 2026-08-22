@@ -58,7 +58,7 @@ export class GroqClient {
           lastError = normalizeGroqError(error);
           recordGroqFailure(lastError.type, model);
           logger.warn(lastError.type, { error_type: lastError.type, model, attempt });
-          if (lastError.type === "groq_429" || lastError.type === "groq_auth_error" || lastError.type === "groq_invalid_response") {
+          if (lastError.type === "groq_429" || lastError.type === "groq_auth_error") {
             return { ok: false, errorType: lastError.type, fallbackUsed: true, model, latencyMs: Date.now() - startedAt };
           }
           if (attempt < maxAttempts) {
@@ -136,7 +136,7 @@ function normalizeGroqError(error: unknown): GroqError {
 }
 
 function shouldTryFallbackModel(type: GroqErrorType): boolean {
-  return type === "groq_timeout" || type === "groq_network_error" || type === "groq_unknown_error";
+  return type === "groq_timeout" || type === "groq_network_error" || type === "groq_invalid_response" || type === "groq_unknown_error";
 }
 
 function delay(ms: number): Promise<void> {

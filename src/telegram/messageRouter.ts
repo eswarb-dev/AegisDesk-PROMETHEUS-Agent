@@ -5,8 +5,11 @@ import { answerOwnerLogQuestion } from "../commands/adminLogs.js";
 import { handleMailDraftConfirmation } from "../commands/mail.js";
 import { userMemoryStore } from "../memory/userMemoryStore.js";
 import { PrometheusBrain } from "../prometheus/prometheusBrain.js";
+import { prometheusCore } from "../prometheus/core/prometheusCore.js";
+import { shouldRejectSecret } from "../prometheus/core/memoryReflectionEngine.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
 import { TrustedSupportService } from "../support/trustedSupportService.js";
+import { logger } from "../utils/logger.js";
 
 export function registerMessageRouter(
   bot: Telegraf,
@@ -47,11 +50,53 @@ export function registerMessageRouter(
           contact_id: user?.contact_id ?? null,
           short_summary: summarizeForStorage(ctx.message.text)
         });
+        await reflectAdaptiveLearning(storage, String(ctx.from.id), user?.role ?? "user", user?.contact_id ?? null, ctx.message.text);
       } else {
         await userMemoryStore.appendSafeSummary(ctx.from.id, ctx.message.text);
       }
     }
   });
+}
+
+async function reflectAdaptiveLearning(
+  storage: Extract<StorageProvider, { kind: "supabase" }>,
+  telegramUserId: string,
+  role: "owner" | "trusted_contact" | "user" | "pending",
+  contactId: string | null,
+  text: string
+): Promise<void> {
+  try {
+    const existing = await storage.styles.getProfile(telegramUserId).catch(() => null);
+    if (existing?.learning_enabled === false || shouldRejectSecret(text)) return;
+    const decision = prometheusCore.decide({ role, text, style: existing });
+    if (!decision.learningEvent) return;
+    const event = await storage.styles.createLearningEvent({
+      telegram_user_id: telegramUserId,
+      event_type: decision.learningEvent.eventType,
+      observation: decision.learningEvent.observation,
+      memory_update: decision.learningEvent.memoryUpdate,
+      confidence: decision.learningEvent.confidence,
+      applied: decision.learningEvent.confidence >= 0.7
+    });
+    if (decision.learningEvent.confidence >= 0.7) {
+      await storage.styles.upsertProfile({
+        telegram_user_id: telegramUserId,
+        role,
+        contact_id: contactId,
+        slang_terms: decision.styleSignal.slangTerms,
+        emoji_preference: decision.styleSignal.emojiPreference,
+        preferred_reply_length: decision.styleSignal.preferredReplyLength,
+        preferred_tone: decision.styleSignal.preferredTone,
+        dislikes: decision.styleSignal.dislikes,
+        repeated_topics: decision.emotion.needsSupport ? [decision.emotion.state] : [],
+        emotional_support_style: decision.emotion.needsSupport ? "validate_first_then_practical" : undefined,
+        confidence: decision.learningEvent.confidence
+      });
+    }
+    logger.info("learning_event_recorded", { event_type: event.event_type, applied: event.applied });
+  } catch {
+    logger.warn("learning_reflection_failed", { error_type: "storage_write_failed" });
+  }
 }
 
 async function shouldUseTrustedSupport(storage: Extract<StorageProvider, { kind: "supabase" }>, contactId: string, text: string): Promise<boolean> {

@@ -18,6 +18,10 @@ export async function engineCommand(ctx: Context, config: AppConfig): Promise<vo
     "",
     "Groq:",
     snapshot.groq,
+    "primary model:",
+    config.groqModelPrimary ?? config.groqModel,
+    "fallback model:",
+    config.groqModelFallback ?? "not configured",
     "reason:",
     groqReason(snapshot.lastGroqFailure?.type),
     "",
@@ -31,6 +35,8 @@ export async function engineCommand(ctx: Context, config: AppConfig): Promise<vo
     relativeTime(snapshot.lastGroqSuccess?.at),
     "",
     "Last Groq failure:",
-    snapshot.lastGroqFailure ? `${snapshot.lastGroqFailure.type}, ${relativeTime(snapshot.lastGroqFailure.at)}` : "never"
+    snapshot.lastGroqFailure
+      ? `${snapshot.lastGroqFailure.type}${snapshot.lastGroqFailure.model ? ` on ${snapshot.lastGroqFailure.model}` : ""}, ${relativeTime(snapshot.lastGroqFailure.at)}`
+      : "never"
   ].join("\n"));
 }

@@ -63,6 +63,23 @@ describe("Groq error handling", () => {
       fallbackUsed: true
     });
   });
+
+  it("attempts fallback model after a primary invalid response", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "model decommissioned" } }), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "fallback model online" } }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new GroqClient(
+      { groqApiKey: "secret-key", groqModel: "old-model", groqModelPrimary: "old-model", groqModelFallback: "current-model" },
+      1000,
+      0
+    );
+
+    await expect(client.chat([{ role: "user", content: "hello" }])).resolves.toBe("fallback model online");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).model).toBe("current-model");
+  });
 });
 
 describe("Telegram per-user rate limiter", () => {

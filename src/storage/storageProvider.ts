@@ -15,6 +15,7 @@ import { ShareIndexRepository } from "./shareIndexRepository.js";
 import { getSupabaseServerClient } from "./supabaseClient.js";
 import { SupportRepository } from "./supportRepository.js";
 import { UserRepository } from "./userRepository.js";
+import { StyleRepository } from "./styleRepository.js";
 
 export type JsonStorageProvider = {
   kind: "json";
@@ -37,6 +38,7 @@ export type SupabaseStorageProvider = {
   messages: MessageRepository;
   support: SupportRepository;
   mailDrafts: MailDraftRepository;
+  styles: StyleRepository;
 };
 
 export type StorageProvider = JsonStorageProvider | SupabaseStorageProvider;
@@ -65,7 +67,8 @@ export function createStorageProvider(config: AppConfig): StorageProvider {
     admin: new AdminRepository(supabase),
     messages: new MessageRepository(supabase),
     support: new SupportRepository(supabase),
-    mailDrafts: new MailDraftRepository(supabase)
+    mailDrafts: new MailDraftRepository(supabase),
+    styles: new StyleRepository(supabase)
   };
 }
 

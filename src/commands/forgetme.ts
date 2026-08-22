@@ -14,6 +14,7 @@ export async function forgetmeCommand(ctx: Context, storage?: StorageProvider): 
     await storage.memories.deleteSelfMemories(ctx.from.id);
     await storage.conversations.deleteForUser(ctx.from.id);
     await storage.messages.deleteUserMessages(ctx.from.id);
+    await storage.styles.deleteProfile(ctx.from.id);
     await storage.users.createOrUpdateTelegramUser({
       telegram_user_id: String(ctx.from.id),
       chat_id: String(ctx.chat?.id ?? ctx.from.id),

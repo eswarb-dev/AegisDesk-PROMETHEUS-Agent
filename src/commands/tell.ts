@@ -1,6 +1,8 @@
 import type { Context } from "telegraf";
 import type { AppConfig } from "../config.js";
 import { isAllowedContactId, TrustedContactService } from "../contacts/trustedContactService.js";
+import { TrustedContactMessagingService, type OwnerRelayCommand } from "../contacts/trustedContactMessagingService.js";
+import type { ContactId } from "../contacts/trustedContactTypes.js";
 import { isOwner } from "../memory/ownerMemory.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
 
@@ -16,6 +18,7 @@ export async function tellCommand(
   }
   const text = (ctx.message as { text?: string } | undefined)?.text ?? "";
   const match = text.match(/^\/(?:tell|send_message|send)\s+(\S+)\s+([\s\S]+)/i);
+  const sourceCommand = parseSourceCommand(text);
   const contactId = match?.[1]?.trim().toLowerCase();
   if (!match || !contactId || !isAllowedContactId(contactId)) {
     await ctx.reply("Usage: /tell <aksharaa|vathanya|maddhurika> <message>\nAlias: /send_message <contact_id> <message>");
@@ -29,7 +32,8 @@ export async function tellCommand(
   const message = ["Hey 👋", "", ownerMessage, "", "— PROMETHEUS"].join("\n");
   try {
     if (storage?.kind === "supabase") {
-      await sendViaSupabaseContact(ctx, storage, contactId, message);
+      const relay = new TrustedContactMessagingService(storage);
+      await relay.sendOwnerMessageToContact({ ctx, contactId: contactId as ContactId, message, sourceCommand });
     } else {
       await service.sendMessage(ctx.telegram, contactId, message);
     }
@@ -37,25 +41,6 @@ export async function tellCommand(
   } catch (error) {
     await ctx.reply(formatTellError(contactId, error));
   }
-}
-
-async function sendViaSupabaseContact(ctx: Context, storage: Extract<StorageProvider, { kind: "supabase" }>, contactId: "aksharaa" | "vathanya" | "maddhurika", message: string): Promise<void> {
-  const contact = await storage.contacts.repairChatIdFromTelegramUser(contactId);
-  if (!contact?.enabled || !contact.telegram_user_id) {
-    throw new Error(`${titleCase(contactId)} is not linked as an approved trusted contact.`);
-  }
-  if (contact.chat_id == null) {
-    throw new Error(`${titleCase(contactId)} is linked by Telegram ID, but chat_id is missing.\nAsk them to send /start to PROMETHEUS again, then retry.`);
-  }
-  await ctx.telegram.sendMessage(contact.chat_id, message);
-  await storage.messages.storeOutboundMessage({
-    telegram_user_id: String(contact.telegram_user_id),
-    chat_id: String(contact.chat_id),
-    role: "trusted_contact",
-    contact_id: contactId,
-    message_type: "admin",
-    text: message
-  });
 }
 
 function formatTellError(contactId: string, error: unknown): string {
@@ -76,4 +61,9 @@ function isUnsafeMessage(text: string): boolean {
 
 function titleCase(value: string): string {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
+}
+
+function parseSourceCommand(text: string): OwnerRelayCommand {
+  const command = text.trim().split(/\s+/, 1)[0]?.replace("/", "").toLowerCase();
+  return command === "send_message" || command === "send" ? command : "tell";
 }

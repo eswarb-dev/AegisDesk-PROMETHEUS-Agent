@@ -1,10 +1,17 @@
 import type { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import type { AppConfig } from "../config.js";
+import { defaultCodingConfig } from "../config.js";
 import { answerOwnerLogQuestion } from "../commands/adminLogs.js";
 import { handleMailDraftConfirmation } from "../commands/mail.js";
+import { CodeResponsePlanner } from "../coding/codeResponsePlanner.js";
+import { solvePendingCodingRequest } from "../coding/codeResponsePlanner.js";
+import { detectCodingIntent } from "../coding/codingIntentDetector.js";
+import { splitTelegramMarkdown } from "../coding/codeBlockFormatter.js";
+import { normalizeCodeLanguage } from "../coding/languageResolver.js";
 import { userMemoryStore } from "../memory/userMemoryStore.js";
 import { PrometheusBrain } from "../prometheus/prometheusBrain.js";
+import { GroqClient } from "../prometheus/groqClient.js";
 import { prometheusCore } from "../prometheus/core/prometheusCore.js";
 import { shouldRejectSecret } from "../prometheus/core/memoryReflectionEngine.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
@@ -21,9 +28,38 @@ export function registerMessageRouter(
     if (ctx.message.text.startsWith("/")) return;
     if (storage && await handleMailDraftConfirmation(ctx, config, storage)) return;
     if (storage && await answerOwnerLogQuestion(ctx.message.text, ctx, config, storage)) return;
+    const coding = config.coding ?? defaultCodingConfig();
+    const followUpLanguage = normalizeCodeLanguage(ctx.message.text);
+    if (coding.enabled && followUpLanguage && ctx.from?.id && ctx.chat?.id) {
+      const planner = new CodeResponsePlanner(config, new GroqClient({
+        ...config,
+        groqModelPrimary: coding.codeModel ?? config.groqModelPrimary ?? config.groqModel,
+        groqModelFallback: coding.codeModelFallback ?? config.groqModelFallback
+      }), storage);
+      const response = await solvePendingCodingRequest({
+        userId: ctx.from.id,
+        chatId: ctx.chat.id,
+        language: followUpLanguage,
+        planner
+      });
+      if (response) {
+        for (const part of splitTelegramMarkdown(response)) await ctx.reply(part);
+        return;
+      }
+    }
+    if (coding.enabled && detectCodingIntent(ctx.message.text).isCodingRequest) {
+      const planner = new CodeResponsePlanner(config, new GroqClient({
+        ...config,
+        groqModelPrimary: coding.codeModel ?? config.groqModelPrimary ?? config.groqModel,
+        groqModelFallback: coding.codeModelFallback ?? config.groqModelFallback
+      }), storage);
+      const response = await planner.solve({ userId: ctx.from?.id, text: ctx.message.text });
+      for (const part of splitTelegramMarkdown(response)) await ctx.reply(part);
+      return;
+    }
     if (storage?.kind === "supabase" && ctx.from?.id && ctx.chat?.id) {
       const user = await storage.users.getTelegramUserById(ctx.from.id);
-      if (user?.role === "trusted_contact" && user.contact_id && user.memory_enabled !== false && await shouldUseTrustedSupport(storage, user.contact_id, ctx.message.text)) {
+      if (user?.role === "trusted_contact" && user.contact_id && user.memory_enabled !== false && await shouldUseTrustedSupport(storage, user.contact_id, String(ctx.from.id), ctx.message.text)) {
         const support = new TrustedSupportService(config, storage);
         const response = await support.handleMessage({
           contact: {
@@ -99,12 +135,30 @@ async function reflectAdaptiveLearning(
   }
 }
 
-async function shouldUseTrustedSupport(storage: Extract<StorageProvider, { kind: "supabase" }>, contactId: string, text: string): Promise<boolean> {
+async function shouldUseTrustedSupport(storage: Extract<StorageProvider, { kind: "supabase" }>, contactId: string, telegramUserId: string, text: string): Promise<boolean> {
+  if (await isContextualReplyToOwnerRelay(storage, contactId, telegramUserId, text)) return false;
   if (isTrustedSupportIntent(text)) return true;
   if (contactId === "aksharaa" && isAksharaaSupportTopic(text)) return true;
   if (contactId !== "vathanya") return false;
   const recent = await storage.support.getRecentEventsForContact(contactId, 3).catch(() => []);
   return recent.some((event) => event.emotional_state !== "neutral" || event.severity !== "low") && isVathanyaSupportFollowUp(text);
+}
+
+async function isContextualReplyToOwnerRelay(storage: Extract<StorageProvider, { kind: "supabase" }>, contactId: string, telegramUserId: string, text: string): Promise<boolean> {
+  if (!isShortReactionToContext(text)) return false;
+  const messages = await storage.messages.getMessagesByContactId(contactId, telegramUserId, 10).catch(() => []);
+  const previous = [...messages].reverse().find((message) => message.direction === "outbound");
+  if (!previous?.owner_initiated) return false;
+  if (previous.contact_id !== contactId) return false;
+  const contextText = `${previous.text_redacted ?? previous.text ?? ""} ${previous.source_command ?? ""}`.toLowerCase();
+  return previous.message_type === "owner_relay" || previous.sender_label === "owner_via_prometheus" || /\b(tell|send_message|birthday|bday|😂|haha|caught|plan)\b/.test(contextText);
+}
+
+function isShortReactionToContext(text: string): boolean {
+  const clean = text.trim().toLowerCase();
+  if (!clean) return false;
+  if (/^(😭+|😂+|🤣+|🥲+|😅+|😢+|😌+|👍+|❤️+|💀+|ok+|okay|okie|seri|hmm+|oh+h+|ayyoo+|by mistake+|by mistake\.*|mistake\.*)$/iu.test(clean)) return true;
+  return clean.length <= 24 && /^[\p{Emoji_Presentation}\p{Extended_Pictographic}\s.!?]+$/u.test(clean);
 }
 
 function isTrustedSupportIntent(text: string): boolean {

@@ -40,10 +40,19 @@ function createSupabaseStorage() {
         { telegram_user_id: "2002", chat_id: "2002", role: "trusted_contact", contact_id: "aksharaa", direction: "inbound", message_type: "text", text_redacted: "How is Eswar?", created_at: "2026-08-11T10:00:00Z" },
         { telegram_user_id: "2002", chat_id: "2002", role: "trusted_contact", contact_id: "aksharaa", direction: "outbound", message_type: "text", text_redacted: "I can only share what Eswar allowed.", created_at: "2026-08-11T10:01:00Z" }
       ],
-      getMessagesByContactId: async (contactId: string) => contactId === "aksharaa" ? [
-        { telegram_user_id: "2002", chat_id: "2002", role: "trusted_contact", contact_id: "aksharaa", direction: "inbound", message_type: "text", text_redacted: "How is Eswar?", created_at: "2026-08-11T10:00:00Z" },
-        { telegram_user_id: "2002", chat_id: "2002", role: "trusted_contact", contact_id: "aksharaa", direction: "outbound", message_type: "text", text_redacted: "I can only share what Eswar allowed.", created_at: "2026-08-11T10:01:00Z" }
-      ] : [],
+      getMessagesByContactId: async (contactId: string) => {
+        if (contactId === "vathanya") {
+          return [
+            { telegram_user_id: "3003", chat_id: "3003", role: "trusted_contact", contact_id: "vathanya", direction: "outbound", message_type: "owner_relay", text_redacted: "Let me know about the birthday plan 😂", sender_role: "owner", sender_label: "owner_via_prometheus", source_command: "tell", owner_initiated: true, created_at: "2026-08-11T10:00:00Z" },
+            { telegram_user_id: "3003", chat_id: "3003", role: "trusted_contact", contact_id: "vathanya", direction: "inbound", message_type: "text", text_redacted: "😭😭", created_at: "2026-08-11T10:01:00Z" },
+            { telegram_user_id: "3003", chat_id: "3003", role: "trusted_contact", contact_id: "vathanya", direction: "outbound", message_type: "text", text_redacted: "That crying emoji says you got caught 😭😂", created_at: "2026-08-11T10:02:00Z" }
+          ];
+        }
+        return contactId === "aksharaa" ? [
+          { telegram_user_id: "2002", chat_id: "2002", role: "trusted_contact", contact_id: "aksharaa", direction: "inbound", message_type: "text", text_redacted: "How is Eswar?", created_at: "2026-08-11T10:00:00Z" },
+          { telegram_user_id: "2002", chat_id: "2002", role: "trusted_contact", contact_id: "aksharaa", direction: "outbound", message_type: "text", text_redacted: "I can only share what Eswar allowed.", created_at: "2026-08-11T10:01:00Z" }
+        ] : [];
+      },
       searchMessages: async () => [],
       searchMessagesByContactId: async () => [],
       getLatestMessageForContact: async (contactId: string) => contactId === "aksharaa" ? { text_redacted: "How is Eswar?", created_at: "2026-08-11T10:00:00Z" } : null,
@@ -76,6 +85,19 @@ describe("owner-scoped admin logs", () => {
     expect(ctx.replies[0]).toContain("PROMETHEUS");
   });
 
+  it("/chat labels owner relay messages chronologically", async () => {
+    const ctx = createMockContext({ userId: 1001, text: "/chat vathanya" });
+
+    await chatCommand(ctx, config, createSupabaseStorage() as never);
+
+    expect(ctx.replies[0]).toContain("OWNER via PROMETHEUS");
+    expect(ctx.replies[0]).toContain("Let me know about the birthday plan");
+    expect(ctx.replies[0]).toContain("Vathanya");
+    expect(ctx.replies[0]).toContain("😭😭");
+    expect(ctx.replies[0]).toContain("That crying emoji says you got caught");
+    expect(ctx.replies[0].indexOf("OWNER via PROMETHEUS")).toBeLessThan(ctx.replies[0].indexOf("😭😭"));
+  });
+
   it("export includes bot-only scope disclaimer", async () => {
     const ctx = createMockContext({ userId: 1001, text: "/export aksharaa" });
 
@@ -85,13 +107,14 @@ describe("owner-scoped admin logs", () => {
     expect(ctx.replies[0]).toContain("Scope: messages inside @AegisDesk_PrometheusBot only");
   });
 
-  it("natural owner question checks contact_id fallback when trusted_contacts is stale", async () => {
+  it("natural owner question checks contact bot conversation history", async () => {
     const ctx = createMockContext({ userId: 1001, text: "Did Vathanya talk to you?" });
 
     const handled = await answerOwnerLogQuestion("Did Vathanya talk to you?", ctx, config, createSupabaseStorage() as never);
 
     expect(handled).toBe(true);
-    expect(ctx.replies[0]).toContain("has not messaged PROMETHEUS yet");
+    expect(ctx.replies[0]).toContain("Yes, Vathanya talked to me inside this bot");
+    expect(ctx.replies[0]).toContain("That crying emoji says you got caught");
   });
 
   it("does not intercept owner storytelling about trusted contacts as log retrieval", async () => {

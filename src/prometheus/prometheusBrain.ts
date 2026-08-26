@@ -111,9 +111,11 @@ export class PrometheusBrain {
       : [];
     const relevantSubjectMemories = selectRelevantSubjectMemories(subjectMemories, cleanText);
     const recentMessagesRepo = this.storage?.kind === "supabase"
-      ? (this.storage as { messages?: { getRecentMessagesByTelegramUserId?: (telegramUserId: string | number, limit?: number) => Promise<Array<{ direction?: string; text_redacted?: string | null; text?: string | null }>> } }).messages
+      ? (this.storage as { messages?: { getMessagesByContactId?: (contactId: string, telegramUserId?: string | number | null, limit?: number) => Promise<Array<{ direction?: string; text_redacted?: string | null; text?: string | null; sender_role?: string | null; sender_label?: string | null; source_command?: string | null; owner_initiated?: boolean; message_type?: string; contact_id?: string | null; created_at?: string }>>; getRecentMessagesByTelegramUserId?: (telegramUserId: string | number, limit?: number) => Promise<Array<{ direction?: string; text_redacted?: string | null; text?: string | null; sender_role?: string | null; sender_label?: string | null; source_command?: string | null; owner_initiated?: boolean; message_type?: string; contact_id?: string | null; created_at?: string }>> } }).messages
       : undefined;
-    const recentChat = recentMessagesRepo?.getRecentMessagesByTelegramUserId && userId
+    const recentChat = identity.role === "trusted_contact" && contactId && recentMessagesRepo?.getMessagesByContactId
+      ? await recentMessagesRepo.getMessagesByContactId(contactId, userId, 10).catch(() => [])
+      : recentMessagesRepo?.getRecentMessagesByTelegramUserId && userId
       ? await recentMessagesRepo.getRecentMessagesByTelegramUserId(userId, 6).catch(() => [])
       : [];
 
@@ -152,6 +154,9 @@ export class PrometheusBrain {
           "",
           "Recent same-chat context:",
           formatRecentChatContext(recentChat),
+          identity.role === "trusted_contact" && hasRecentOwnerRelay(recentChat)
+            ? "If the latest trusted-contact message is a short emoji or brief reaction, treat it as a contextual reply to the recent owner relay, not as standalone distress."
+            : "",
           "",
           "Allowed Eswar share index:",
           ...shareIndexes.slice(0, 8).map((item) => `- ${item.key}: ${compactText(item.summary, 220)}`),
@@ -325,16 +330,25 @@ function formatContactLogAnswer(displayName: string, messages: Array<{ text_reda
   ].join("\n");
 }
 
-function formatRecentChatContext(messages: Array<{ direction?: string; text_redacted?: string | null; text?: string | null }>): string {
+function formatRecentChatContext(messages: Array<{ direction?: string; text_redacted?: string | null; text?: string | null; sender_role?: string | null; sender_label?: string | null; source_command?: string | null; owner_initiated?: boolean; message_type?: string; contact_id?: string | null; created_at?: string }>): string {
   const lines = messages
     .slice(-6)
     .map((message) => {
-      const speaker = message.direction === "outbound" ? "PROMETHEUS" : "Owner";
+      const speaker = message.direction === "outbound"
+        ? message.owner_initiated || message.sender_role === "owner" || message.message_type === "owner_relay"
+          ? "OWNER via PROMETHEUS"
+          : "PROMETHEUS"
+        : "User";
+      const source = message.source_command ? ` (${message.source_command})` : "";
       const text = compactText(message.text_redacted || message.text || "", 180);
-      return text ? `${speaker}: ${text}` : "";
+      return text ? `${speaker}${source}: ${text}` : "";
     })
     .filter(Boolean);
   return lines.length ? lines.join("\n") : "None.";
+}
+
+function hasRecentOwnerRelay(messages: Array<{ direction?: string; sender_role?: string | null; sender_label?: string | null; owner_initiated?: boolean; message_type?: string }>): boolean {
+  return messages.slice(-6).some((message) => message.direction === "outbound" && (message.owner_initiated || message.sender_role === "owner" || message.sender_label === "owner_via_prometheus" || message.message_type === "owner_relay"));
 }
 
 const PROMETHEUS_OFFICIAL_EMAIL = "prometheus.inference@gmail.com";

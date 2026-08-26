@@ -1,4 +1,6 @@
 import dotenv from "dotenv";
+import type { CodingModeConfig } from "./coding/codingTypes.js";
+import { normalizeDefaultCodeLanguage } from "./coding/languageResolver.js";
 
 dotenv.config();
 
@@ -24,6 +26,9 @@ export type AppConfig = {
   gmailSenderEmail: string;
   gmailSenderName: string;
   gmailDraftsEnabled: boolean;
+  desktopAgentSharedSecret?: string;
+  coding?: CodingModeConfig;
+  mistralApiKey?: string;
 };
 
 export function loadConfig(env = process.env): AppConfig {
@@ -62,8 +67,42 @@ export function loadConfig(env = process.env): AppConfig {
     gmailRefreshToken: env.GMAIL_REFRESH_TOKEN,
     gmailSenderEmail: env.GMAIL_SENDER_EMAIL ?? "prometheus.inference@gmail.com",
     gmailSenderName: env.GMAIL_SENDER_NAME ?? "PROMETHEUS",
-    gmailDraftsEnabled: env.GMAIL_DRAFTS_ENABLED !== "false"
+    gmailDraftsEnabled: env.GMAIL_DRAFTS_ENABLED !== "false",
+    desktopAgentSharedSecret: env.DESKTOP_AGENT_SHARED_SECRET,
+    mistralApiKey: env.MISTRAL_API_KEY,
+    coding: {
+      enabled: env.CODING_MODE_ENABLED !== "false",
+      defaultLanguage: normalizeDefaultCodeLanguage(env.DEFAULT_CODE_LANGUAGE),
+      provider: env.CODING_PROVIDER === "mistral" ? "mistral" : "groq",
+      providerFallback: env.CODING_PROVIDER_FALLBACK === "none" ? "none" : env.CODING_PROVIDER_FALLBACK === "groq" ? "groq" : "mistral",
+      codeModel: env.GROQ_CODE_MODEL || undefined,
+      codeModelFallback: env.GROQ_CODE_MODEL_FALLBACK || undefined,
+      includeExplanation: env.CODING_INCLUDE_EXPLANATION !== "false",
+      includeComplexity: env.CODING_INCLUDE_COMPLEXITY !== "false",
+      includeTestCases: env.CODING_INCLUDE_TEST_CASES !== "false",
+      mistralEnabled: env.MISTRAL_CODE_ENABLED !== "false",
+      mistralCodeModel: env.MISTRAL_CODE_MODEL ?? "codestral-latest",
+      mistralCodeModelFallback: env.MISTRAL_CODE_MODEL_FALLBACK || undefined,
+      mistralTimeoutMs: Number(env.MISTRAL_CODE_TIMEOUT_MS ?? 30000),
+      mistralMaxRetries: Number(env.MISTRAL_CODE_MAX_RETRIES ?? 1)
+    }
   };
 }
 
 export const config = loadConfig();
+
+export function defaultCodingConfig(): CodingModeConfig {
+  return {
+    enabled: true,
+    defaultLanguage: "ask",
+    provider: "groq",
+    providerFallback: "mistral",
+    includeExplanation: true,
+    includeComplexity: true,
+    includeTestCases: true,
+    mistralEnabled: true,
+    mistralCodeModel: "codestral-latest",
+    mistralTimeoutMs: 30000,
+    mistralMaxRetries: 1
+  };
+}

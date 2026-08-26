@@ -66,4 +66,61 @@ describe("HTTP endpoints", () => {
     expect(bot.telegram.setWebhook).toHaveBeenCalledWith("https://example.test/telegram/webhook");
     expect(handleUpdate).toHaveBeenCalledWith({ update_id: 1 });
   });
+
+  it("desktop reply endpoint rejects missing auth", async () => {
+    const originalSecret = config.desktopAgentSharedSecret;
+    config.desktopAgentSharedSecret = "desktop-secret";
+
+    await request(createApp())
+      .post("/api/prometheus/desktop-reply")
+      .send({ source: "aegisdesk_desktop_voice", text: "Prometheus" })
+      .expect(401);
+
+    config.desktopAgentSharedSecret = originalSecret;
+  });
+
+  it("desktop reply endpoint accepts valid shared secret and uses local fallback", async () => {
+    const originalSecret = config.desktopAgentSharedSecret;
+    const originalGroqKey = config.groqApiKey;
+    config.desktopAgentSharedSecret = "desktop-secret";
+    config.groqApiKey = undefined;
+
+    const response = await request(createApp())
+      .post("/api/prometheus/desktop-reply")
+      .set("authorization", "Bearer desktop-secret")
+      .send({ source: "aegisdesk_desktop_voice", text: "are you there", context: { desktop: true, voice: true } })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      ok: true,
+      replyText: "Always here, Sir.",
+      speakText: "Always here, Sir.",
+      responseMode: "core_memory_reply",
+      requiresConfirmation: false,
+      suggestedLocalAction: null
+    });
+
+    config.desktopAgentSharedSecret = originalSecret;
+    config.groqApiKey = originalGroqKey;
+  });
+
+  it("desktop reply endpoint sanitizes bro from Groq replies", async () => {
+    const originalSecret = config.desktopAgentSharedSecret;
+    const originalGroqKey = config.groqApiKey;
+    config.desktopAgentSharedSecret = "desktop-secret";
+    config.groqApiKey = "test-secret";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: "Here bro." } }] }), { status: 200 })));
+
+    const response = await request(createApp())
+      .post("/api/prometheus/desktop-reply")
+      .set("x-desktop-agent-secret", "desktop-secret")
+      .send({ source: "aegisdesk_desktop_voice", text: "say something", context: { desktop: true, voice: true } })
+      .expect(200);
+
+    expect(response.body.speakText).toBe("Here Sir.");
+    expect(JSON.stringify(response.body)).not.toMatch(/\bbro\b/i);
+
+    config.desktopAgentSharedSecret = originalSecret;
+    config.groqApiKey = originalGroqKey;
+  });
 });

@@ -102,17 +102,32 @@ create table if not exists bot_messages (
   role text not null,
   contact_id text null,
   direction text not null check (direction in ('inbound', 'outbound')),
-  message_type text not null check (message_type in ('command', 'text', 'system', 'fallback', 'admin')),
+  message_type text not null check (message_type in ('command', 'text', 'system', 'fallback', 'admin', 'owner_relay')),
   text text null,
   text_redacted text null,
   command text null,
+  sender_role text null,
+  sender_label text null,
+  source_command text null,
+  owner_initiated boolean default false,
+  visible_to_contact boolean default true,
   groq_used boolean default false,
   fallback_used boolean default false,
   created_at timestamptz default now()
 );
 
+alter table bot_messages add column if not exists sender_role text null;
+alter table bot_messages add column if not exists sender_label text null;
+alter table bot_messages add column if not exists source_command text null;
+alter table bot_messages add column if not exists owner_initiated boolean default false;
+alter table bot_messages add column if not exists visible_to_contact boolean default true;
+alter table bot_messages drop constraint if exists bot_messages_message_type_check;
+alter table bot_messages add constraint bot_messages_message_type_check
+check (message_type in ('command', 'text', 'system', 'fallback', 'admin', 'owner_relay'));
+
 create index if not exists bot_messages_contact_created_idx on bot_messages (contact_id, created_at desc);
 create index if not exists bot_messages_user_created_idx on bot_messages (telegram_user_id, created_at desc);
+create index if not exists bot_messages_contact_owner_relay_idx on bot_messages (contact_id, owner_initiated, created_at desc);
 
 create table if not exists trusted_support_events (
   id uuid primary key default gen_random_uuid(),

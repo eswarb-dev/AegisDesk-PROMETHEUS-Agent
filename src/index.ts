@@ -9,9 +9,11 @@ import { TELEGRAM_WEBHOOK_PATH, registerWebhook } from "./telegram/webhook.js";
 import { logger } from "./utils/logger.js";
 import { getEngineSnapshot } from "./prometheus/engineStatus.js";
 import { GroqClient } from "./prometheus/groqClient.js";
+import { registerDesktopReplyRoute } from "./http/desktopReplyRoute.js";
 
 export function createApp() {
   const app = express();
+  app.use(express.json({ limit: "32kb" }));
   app.get("/health", (_req, res) => {
     const snapshot = getEngineSnapshot(config);
     logger.info("render_health_ping");
@@ -37,6 +39,7 @@ export function createApp() {
       latency_ms: result.latencyMs
     });
   });
+  registerDesktopReplyRoute(app, config);
   return app;
 }
 

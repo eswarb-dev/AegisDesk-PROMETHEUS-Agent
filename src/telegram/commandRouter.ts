@@ -14,6 +14,7 @@ import {
   usersCommand
 } from "../commands/adminLogs.js";
 import { contactsCommand } from "../commands/contacts.js";
+import { codeCommand, codeConfigCommand } from "../commands/code.js";
 import { engineCommand } from "../commands/engine.js";
 import { forgetmeCommand } from "../commands/forgetme.js";
 import { feedbackCommand } from "../commands/feedback.js";
@@ -55,6 +56,10 @@ export function registerCommands(
   bot.command("mail", (ctx) => mailCommand(ctx, config, storage));
   bot.command("notify", (ctx) => notifyCommand(ctx, config, storage));
   bot.command("play", playCommand);
+  bot.command("code", (ctx) => codeCommand(ctx, config, storage));
+  bot.command("solve", (ctx) => codeCommand(ctx, config, storage));
+  bot.command("leetcode", (ctx) => codeCommand(ctx, config, storage));
+  bot.command("codeconfig", (ctx) => codeConfigCommand(ctx, config));
   bot.command("feedback", (ctx) => feedbackCommand(ctx, storage));
   bot.command("style", (ctx) => styleCommand(ctx, storage));
   bot.command("resetstyle", (ctx) => resetStyleCommand(ctx, storage));

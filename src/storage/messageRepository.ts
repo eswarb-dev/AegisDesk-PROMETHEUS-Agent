@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { redactSecrets } from "../utils/redactSecrets.js";
 
 export type BotMessageDirection = "inbound" | "outbound";
-export type BotMessageType = "command" | "text" | "system" | "fallback" | "admin";
+export type BotMessageType = "command" | "text" | "system" | "fallback" | "admin" | "owner_relay";
 
 export type BotMessageRow = {
   id?: string;
@@ -15,6 +15,11 @@ export type BotMessageRow = {
   text?: string | null;
   text_redacted?: string | null;
   command?: string | null;
+  sender_role?: string | null;
+  sender_label?: string | null;
+  source_command?: string | null;
+  owner_initiated?: boolean;
+  visible_to_contact?: boolean;
   groq_used?: boolean;
   fallback_used?: boolean;
   created_at?: string;
@@ -194,7 +199,12 @@ export class MessageRepository {
       chat_id: String(input.chat_id),
       text: textRedacted === input.text ? input.text ?? null : null,
       text_redacted: textRedacted,
-      command: input.command ?? null
+      command: input.command ?? null,
+      sender_role: input.sender_role ?? null,
+      sender_label: input.sender_label ?? null,
+      source_command: input.source_command ?? null,
+      owner_initiated: input.owner_initiated ?? false,
+      visible_to_contact: input.visible_to_contact ?? true
     });
     if (error) throw error;
   }

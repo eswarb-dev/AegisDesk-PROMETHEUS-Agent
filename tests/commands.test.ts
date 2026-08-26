@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { aboutCommand } from "../src/commands/about.js";
 import { contactsCommand } from "../src/commands/contacts.js";
+import { codeConfigCommand } from "../src/commands/code.js";
 import { helpCommand } from "../src/commands/help.js";
 import { memoryCommand } from "../src/commands/memory.js";
 import { pingCommand } from "../src/commands/ping.js";
@@ -160,7 +161,17 @@ describe("PROMETHEUS commands", () => {
     expect(ctx.sentMessages[0]).toMatchObject({ chatId: 555 });
     expect(ctx.sentMessages[0].text).toContain("👋");
     expect(ctx.replies[0]).toContain("Sent to Vathanya");
-    expect(storage.messages.storeOutboundMessage).toHaveBeenCalled();
+    expect(storage.messages.storeOutboundMessage).toHaveBeenCalledWith(expect.objectContaining({
+      telegram_user_id: "5559225697",
+      chat_id: "555",
+      contact_id: "vathanya",
+      message_type: "owner_relay",
+      sender_role: "owner",
+      sender_label: "owner_via_prometheus",
+      source_command: "tell",
+      owner_initiated: true,
+      visible_to_contact: true
+    }));
   });
 
   it("/send_message alias behaves like /tell", async () => {
@@ -171,6 +182,12 @@ describe("PROMETHEUS commands", () => {
 
     expect(ctx.sentMessages[0].text).toContain("hi");
     expect(ctx.replies[0]).toContain("Sent to Vathanya");
+    expect(storage.messages.storeOutboundMessage).toHaveBeenCalledWith(expect.objectContaining({
+      contact_id: "vathanya",
+      message_type: "owner_relay",
+      source_command: "send_message",
+      owner_initiated: true
+    }));
   });
 
   it("/tell explains missing chat_id and repairs from telegram_users when available", async () => {
@@ -300,6 +317,44 @@ describe("PROMETHEUS commands", () => {
     expect(ctx.replies[0]).toContain("Trust worthy person to My Master Eswar");
     expect(ctx.replies[0]).toContain("Role: trusted_contact");
     expect(ctx.replies[0]).not.toContain("Owner match: false");
+  });
+
+  it("/codeconfig language python stores Python default", async () => {
+    const ctx = createMockContext({ userId: 1001, text: "/codeconfig language python" });
+    const codingConfig = {
+      ...config,
+      coding: {
+        enabled: true,
+        defaultLanguage: "ask" as const,
+        includeExplanation: true,
+        includeComplexity: true,
+        includeTestCases: true
+      }
+    };
+
+    await codeConfigCommand(ctx, codingConfig as never);
+
+    expect(codingConfig.coding.defaultLanguage).toBe("python");
+    expect(ctx.replies[0]).toBe("Default coding language set to Python, Sir.");
+  });
+
+  it("/codeconfig language ask resets missing-language behavior", async () => {
+    const ctx = createMockContext({ userId: 1001, text: "/codeconfig language ask" });
+    const codingConfig = {
+      ...config,
+      coding: {
+        enabled: true,
+        defaultLanguage: "python" as const,
+        includeExplanation: true,
+        includeComplexity: true,
+        includeTestCases: true
+      }
+    };
+
+    await codeConfigCommand(ctx, codingConfig as never);
+
+    expect(codingConfig.coding.defaultLanguage).toBe("ask");
+    expect(ctx.replies[0]).toContain("Default coding language cleared");
   });
 });
 

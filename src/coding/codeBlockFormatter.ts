@@ -23,6 +23,11 @@ export function splitTelegramMarkdown(text: string, limit = 3900): string[] {
   return parts;
 }
 
+export function extractPrimaryCodeBlock(text: string): string | null {
+  const match = text.match(/```[a-zA-Z0-9+#-]*\s*\n([\s\S]*?)```/);
+  return match?.[1]?.trim() ?? null;
+}
+
 function splitLongBlock(block: string, limit: number): string[] {
   const chunks: string[] = [];
   for (let i = 0; i < block.length; i += limit) {

@@ -5,7 +5,7 @@ import { languageFromText } from "./leetcodeTemplateResolver.js";
 export function parseProblemStatement(input: { text: string; defaultLanguage: DefaultCodeLanguage; commandLanguage?: CodeLanguage }): ParsedProblemStatement {
   const rawPrompt = stripCodingCommand(input.text).trim();
   const fallbackLanguage = input.defaultLanguage === "ask" ? undefined : input.defaultLanguage;
-  const language = languageFromText(rawPrompt) ?? input.commandLanguage ?? fallbackLanguage;
+  const language = input.commandLanguage ?? languageFromText(rawPrompt) ?? fallbackLanguage;
   const outputStyle = detectOutputStyle(rawPrompt);
   const examples = extractExamples(rawPrompt);
   const constraints = extractConstraints(rawPrompt);

@@ -1,4 +1,4 @@
-export type CodeLanguage = "python" | "java" | "cpp" | "javascript" | "typescript" | "csharp";
+export type CodeLanguage = "python" | "python3" | "java" | "cpp" | "javascript" | "typescript" | "csharp";
 export type DefaultCodeLanguage = CodeLanguage | "ask";
 
 export type CodingOutputStyle = "leetcode" | "full_program" | "code_only" | "explain_then_code";

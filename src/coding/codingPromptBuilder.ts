@@ -12,6 +12,8 @@ export function buildCodingPrompt(input: { problem: ParsedProblemStatement; lang
         "Return correct, clean, executable code.",
         "Do not invent missing constraints.",
         "If the request is LeetCode-style, return LeetCode-compatible class/function.",
+        "For LeetCode Python, do not use type hints, List[int], return arrows, local asserts, or main blocks inside the code block.",
+        "For LeetCode Python3, type hints are allowed only when required imports are included; still do not include local asserts or main blocks inside the code block.",
         "If full stdin/stdout program is requested, return a full runnable program.",
         "Keep the answer concise.",
         input.owner ? "Address Eswar as Sir outside code blocks only. Never put Sir in code comments." : ""

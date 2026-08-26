@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { detectCodingIntent } from "../src/coding/codingIntentDetector.js";
-import { splitTelegramMarkdown } from "../src/coding/codeBlockFormatter.js";
+import { extractPrimaryCodeBlock, splitTelegramMarkdown } from "../src/coding/codeBlockFormatter.js";
 import { CodeResponsePlanner, solvePendingCodingRequest } from "../src/coding/codeResponsePlanner.js";
 import { validateCodeResponse } from "../src/coding/codeResponseValidator.js";
 import { normalizeCodeLanguage, normalizeDefaultCodeLanguage } from "../src/coding/languageResolver.js";
@@ -78,7 +78,7 @@ describe("coding response mode", () => {
     const response = await planner.solve({ userId: 1001, chatId: 1001, text: "solve two sum" });
 
     expect(response).toContain("Which language do you need the solution in, Sir?");
-    expect(response).toContain("Python, Java, C++");
+    expect(response).toContain("Python, Python3, Java, C++");
     expect(repo.get(1001, 1001)).toMatchObject({
       userId: "1001",
       chatId: "1001",
@@ -152,6 +152,8 @@ describe("coding response mode", () => {
     expect(normalizeCodeLanguage("cs")).toBe("csharp");
     expect(normalizeCodeLanguage("js")).toBe("javascript");
     expect(normalizeCodeLanguage("ts")).toBe("typescript");
+    expect(normalizeCodeLanguage("python3")).toBe("python3");
+    expect(normalizeCodeLanguage("py3")).toBe("python3");
     expect(normalizeDefaultCodeLanguage("ask")).toBe("ask");
   });
 
@@ -178,6 +180,55 @@ describe("coding response mode", () => {
     expect(response).toContain("```java");
     expect(response).toContain("class Solution");
     expect(response).toContain("int[] twoSum");
+  });
+
+  it("returns LeetCode Python median solution without Python3-only annotations or local tests", async () => {
+    const groq = { chat: vi.fn() };
+    const planner = new CodeResponsePlanner(config, groq);
+
+    const response = await planner.solve({
+      userId: 1001,
+      text: [
+        "Median of Two Sorted Arrays",
+        "Given two sorted arrays nums1 and nums2, return the median of the two sorted arrays.",
+        "The overall run time complexity should be O(log (m+n)).",
+        "Language: python",
+        "LeetCode"
+      ].join("\n")
+    });
+    const code = extractPrimaryCodeBlock(response) ?? "";
+
+    expect(response).toContain("```python");
+    expect(code).toContain("class Solution");
+    expect(code).toContain("findMedianSortedArrays");
+    expect(code).not.toContain("->");
+    expect(code).not.toContain("List[int]");
+    expect(code).not.toMatch(/\bassert\b/);
+    expect(code).not.toMatch(/__name__|def\s+main\s*\(/);
+    expect(response).toContain("Time: O(log(min(m, n)))");
+    expect(response).toContain("Space: O(1)");
+    expect(response).toContain("nums1 = [1,3], nums2 = [2] -> 2.0");
+    expect(response).toContain("nums1 = [1,2], nums2 = [3,4] -> 2.5");
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("returns LeetCode Python3 median solution with safe annotation handling and no local tests", async () => {
+    const planner = new CodeResponsePlanner(config, { chat: vi.fn() });
+
+    const response = await planner.solve({
+      userId: 1001,
+      text: "Median of Two Sorted Arrays python3 LeetCode code"
+    });
+    const code = extractPrimaryCodeBlock(response) ?? "";
+
+    expect(response).toContain("```python");
+    expect(code).toContain("class Solution");
+    expect(code).toContain("findMedianSortedArrays");
+    expect(code).not.toMatch(/\bassert\b/);
+    expect(code).not.toMatch(/__name__|def\s+main\s*\(/);
+    if (code.includes("List[")) {
+      expect(code).toContain("from typing import List");
+    }
   });
 
   it("code-only response returns only a code block", async () => {

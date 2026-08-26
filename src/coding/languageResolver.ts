@@ -2,6 +2,7 @@ import type { CodeLanguage, DefaultCodeLanguage } from "./codingTypes.js";
 
 const LANGUAGE_LABELS: Record<CodeLanguage, string> = {
   python: "Python",
+  python3: "Python3",
   java: "Java",
   cpp: "C++",
   javascript: "JavaScript",
@@ -13,6 +14,7 @@ export function normalizeCodeLanguage(value?: string | null): CodeLanguage | und
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return undefined;
   if (normalized === "py" || normalized === "python") return "python";
+  if (normalized === "python3" || normalized === "py3") return "python3";
   if (normalized === "java") return "java";
   if (normalized === "cpp" || normalized === "c++") return "cpp";
   if (normalized === "js" || normalized === "javascript") return "javascript";
@@ -32,8 +34,8 @@ export function formatLanguage(language: CodeLanguage): string {
 
 export function languageQuestion(owner: boolean): string {
   return owner
-    ? "Which language do you need the solution in, Sir?\nPython, Java, C++, JavaScript, TypeScript, or C#?"
-    : "Which language do you need the solution in?\nPython, Java, C++, JavaScript, TypeScript, or C#?";
+    ? "Which language do you need the solution in, Sir?\nPython, Python3, Java, C++, JavaScript, TypeScript, or C#?"
+    : "Which language do you need the solution in?\nPython, Python3, Java, C++, JavaScript, TypeScript, or C#?";
 }
 
 export function isAskDefault(value: DefaultCodeLanguage): value is "ask" {

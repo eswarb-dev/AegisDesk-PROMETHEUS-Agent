@@ -3,12 +3,13 @@ import { normalizeCodeLanguage } from "./languageResolver.js";
 
 export function languageFromText(text: string): CodeLanguage | undefined {
   const normalized = text.toLowerCase();
-  const match = normalized.match(/\b(python|py|java|c\+\+|cpp|javascript|js|typescript|ts|c#|cs|csharp|c sharp)\b/);
+  const match = normalized.match(/\b(python3|py3|python|py|java|c\+\+|cpp|javascript|js|typescript|ts|c#|cs|csharp|c sharp)\b/);
   if (match) return normalizeCodeLanguage(match[1]);
   return undefined;
 }
 
 export function markdownLanguage(language: CodeLanguage): string {
+  if (language === "python3") return "python";
   if (language === "cpp") return "cpp";
   if (language === "csharp") return "csharp";
   if (language === "javascript") return "javascript";
@@ -23,6 +24,9 @@ export function resolveKnownTemplate(problem: ParsedProblemStatement, language: 
   }
   if (/\btwo sum\b/.test(text)) {
     return twoSumTemplate(language, problem.outputStyle === "full_program");
+  }
+  if (/\bmedian of two sorted arrays\b/.test(text)) {
+    return medianSortedArraysTemplate(language);
   }
   return undefined;
 }
@@ -122,7 +126,7 @@ public:
 };`;
   }
   return `class Solution:
-    def lengthOfLongestSubstring(self, s: str) -> int:
+    def lengthOfLongestSubstring(self, s):
         seen = {}
         left = 0
         best = 0
@@ -188,7 +192,7 @@ public:
 };`;
   }
   return `class Solution:
-    def twoSum(self, nums: list[int], target: int) -> list[int]:
+    def twoSum(self, nums, target):
         seen = {}
         for i, value in enumerate(nums):
             need = target - value
@@ -196,4 +200,37 @@ public:
                 return [seen[need], i]
             seen[value] = i
         return []`;
+}
+
+function medianSortedArraysTemplate(language: CodeLanguage): string | undefined {
+  if (language !== "python" && language !== "python3") return undefined;
+  return `class Solution:
+    def findMedianSortedArrays(self, nums1, nums2):
+        if len(nums1) > len(nums2):
+            nums1, nums2 = nums2, nums1
+
+        m, n = len(nums1), len(nums2)
+        total_left = (m + n + 1) // 2
+        left, right = 0, m
+
+        while left <= right:
+            i = (left + right) // 2
+            j = total_left - i
+
+            nums1_left = float("-inf") if i == 0 else nums1[i - 1]
+            nums1_right = float("inf") if i == m else nums1[i]
+            nums2_left = float("-inf") if j == 0 else nums2[j - 1]
+            nums2_right = float("inf") if j == n else nums2[j]
+
+            if nums1_left <= nums2_right and nums2_left <= nums1_right:
+                if (m + n) % 2 == 1:
+                    return float(max(nums1_left, nums2_left))
+                return (max(nums1_left, nums2_left) + min(nums1_right, nums2_right)) / 2.0
+
+            if nums1_left > nums2_right:
+                right = i - 1
+            else:
+                left = i + 1
+
+        return 0.0`;
 }

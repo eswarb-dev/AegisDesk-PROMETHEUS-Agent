@@ -123,13 +123,31 @@ export function formatSolution(input: { owner: boolean; problem: ParsedProblemSt
     return `\`\`\`${markdownLanguage(input.language)}\n${input.code}\n\`\`\``;
   }
   const intro = input.owner ? "Yes, Sir. This is a sliding-window/hash-map style problem." : "This is a direct coding problem.";
+  const problemTraits = getKnownProblemTraits(input.problem);
   const sections = [
-    input.problem.wantsExplanation && input.coding.includeExplanation ? `Problem approach:\n${intro}\nUse the suitable data structure to track what has already been seen and update the answer in one pass.` : "",
+    input.problem.wantsExplanation && input.coding.includeExplanation ? `Problem approach:\n${problemTraits.approach ?? intro}\n${problemTraits.detail ?? "Use the suitable data structure to track what has already been seen and update the answer in one pass."}` : "",
     `Code:\n\`\`\`${markdownLanguage(input.language)}\n${input.code}\n\`\`\``,
-    input.problem.wantsComplexity && input.coding.includeComplexity ? "Complexity:\nTime: O(n)\nSpace: O(n)" : "",
-    input.problem.wantsTests && input.coding.includeTestCases ? "Test cases:\n- Given examples should match expected output.\n- Empty or minimum-size input should be handled.\n- Duplicate-heavy input should be handled." : ""
+    input.problem.wantsComplexity && input.coding.includeComplexity ? `Complexity:\nTime: ${problemTraits.time ?? "O(n)"}\nSpace: ${problemTraits.space ?? "O(n)"}` : "",
+    (input.problem.wantsTests || problemTraits.tests) && input.coding.includeTestCases ? `Test cases:\n${(problemTraits.tests ?? ["Given examples should match expected output.", "Empty or minimum-size input should be handled.", "Duplicate-heavy input should be handled."]).map((test) => `- ${test}`).join("\n")}` : ""
   ].filter(Boolean);
   return sections.join("\n\n");
+}
+
+function getKnownProblemTraits(problem: ParsedProblemStatement): { approach?: string; detail?: string; time?: string; space?: string; tests?: string[] } {
+  if (/\bmedian of two sorted arrays\b/i.test(problem.rawPrompt)) {
+    return {
+      approach: "Yes, Sir. Use binary search on the smaller array.",
+      detail: "Partition both sorted arrays so every value on the left side is less than or equal to every value on the right side, then compute the median from the boundary values.",
+      time: "O(log(min(m, n)))",
+      space: "O(1)",
+      tests: [
+        "nums1 = [1,3], nums2 = [2] -> 2.0",
+        "nums1 = [1,2], nums2 = [3,4] -> 2.5",
+        "One array can be empty when the other array is sorted."
+      ]
+    };
+  }
+  return {};
 }
 
 function fallbackCodingReply(owner: boolean, problem: ParsedProblemStatement): string {

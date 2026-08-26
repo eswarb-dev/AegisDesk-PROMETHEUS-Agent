@@ -8,7 +8,7 @@ describe("owner response validation", () => {
   });
 
   it("rejects mismatched local time greetings", () => {
-    expect(validateOwnerResponse("Good morning, Sir.", "casual_chat", "yes sir", "UTC")).toBe(false);
+    expect(validateOwnerResponse("Good evening, Sir.", "casual_chat", "yes sir", "UTC")).toBe(false);
   });
 
   it("rejects generic follow-up questions for casual owner chat", () => {

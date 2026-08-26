@@ -67,7 +67,7 @@ export class CodeResponsePlanner {
       problem,
       language
     });
-    return result.ok ? result.text : fallbackCodingReply(owner, problem);
+    return result.ok ? result.text : fallbackCodingReply(owner, problem, language);
   }
 
   private async storeSafePreference(userId: number | undefined, language: CodeLanguage, problem: ParsedProblemStatement): Promise<void> {
@@ -150,7 +150,12 @@ function getKnownProblemTraits(problem: ParsedProblemStatement): { approach?: st
   return {};
 }
 
-function fallbackCodingReply(owner: boolean, problem: ParsedProblemStatement): string {
+function fallbackCodingReply(owner: boolean, problem: ParsedProblemStatement, language?: CodeLanguage): string {
+  if (language === "python" && problem.outputStyle === "leetcode") {
+    return owner
+      ? "Sir, I could not guarantee plain LeetCode Python code from the engine. Please choose Python3, Java, or C++ for this one."
+      : "I could not guarantee plain LeetCode Python code from the engine. Please choose Python3, Java, or C++ for this one.";
+  }
   const prefix = owner ? "Sir, coding engine is unavailable right now." : "Coding engine is unavailable right now.";
   const hint = problem.rawPrompt.length ? " I can still help with the approach in basic mode." : "";
   return `${prefix}${hint}`;

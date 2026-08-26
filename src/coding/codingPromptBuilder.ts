@@ -39,6 +39,17 @@ export function buildCodingPrompt(input: { problem: ParsedProblemStatement; lang
 }
 
 export function buildRepairPrompt(reason: string): ChatMessage {
+  if (/Python LeetCode mode cannot include Python3 type annotations/i.test(reason)) {
+    return {
+      role: "user",
+      content: [
+        "The code used Python3 type annotations, but the selected runtime is LeetCode Python.",
+        "Regenerate annotation-free Python code only.",
+        "Remove all parameter annotations, return annotations, typing imports, local tests, assert statements, and driver code.",
+        "Keep only class Solution."
+      ].join(" ")
+    };
+  }
   return {
     role: "user",
     content: `The previous answer failed validation because: ${reason}.\nRegenerate the solution correctly.\nReturn only the required format.`

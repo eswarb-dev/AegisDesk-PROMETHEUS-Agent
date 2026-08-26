@@ -28,6 +28,12 @@ export function extractPrimaryCodeBlock(text: string): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
+export function extractCodeBlocks(text: string): string[] {
+  return [...text.matchAll(/```[a-zA-Z0-9+#-]*\s*\n([\s\S]*?)```/g)]
+    .map((match) => match[1]?.trim())
+    .filter((code): code is string => Boolean(code));
+}
+
 function splitLongBlock(block: string, limit: number): string[] {
   const chunks: string[] = [];
   for (let i = 0; i < block.length; i += limit) {

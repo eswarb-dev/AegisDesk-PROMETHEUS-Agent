@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { detectCodingIntent } from "../src/coding/codingIntentDetector.js";
 import { extractPrimaryCodeBlock, splitTelegramMarkdown } from "../src/coding/codeBlockFormatter.js";
 import { CodeResponsePlanner, solvePendingCodingRequest } from "../src/coding/codeResponsePlanner.js";
-import { validateCodeResponse } from "../src/coding/codeResponseValidator.js";
+import { getCodeResponseValidationError, validateCodeResponse } from "../src/coding/codeResponseValidator.js";
 import { normalizeCodeLanguage, normalizeDefaultCodeLanguage } from "../src/coding/languageResolver.js";
 import { PendingCodingRequestRepository } from "../src/coding/pendingCodingRequestRepository.js";
 import { parseProblemStatement } from "../src/coding/problemStatementParser.js";
@@ -203,6 +203,8 @@ describe("coding response mode", () => {
     expect(code).toContain("findMedianSortedArrays");
     expect(code).not.toContain("->");
     expect(code).not.toContain("List[int]");
+    expect(code).not.toMatch(/from\s+typing\s+import|typing\./i);
+    expect(code.split(/\r?\n/).filter((line) => /^\s*def\s+\w+\s*\(/.test(line)).some((line) => /:\s*[^,)]+|\)\s*->/.test(line))).toBe(false);
     expect(code).not.toMatch(/\bassert\b/);
     expect(code).not.toMatch(/__name__|def\s+main\s*\(/);
     expect(response).toContain("Time: O(log(min(m, n)))");
@@ -245,6 +247,26 @@ describe("coding response mode", () => {
     expect(validateCodeResponse("Explanation only", parsed, "python")).toBe(false);
     expect(validateCodeResponse("```python\n# TODO\n```", parsed, "python")).toBe(false);
     expect(validateCodeResponse("```java\nclass Solution {}\n```\nbro", parsed, "python")).toBe(false);
+  });
+
+  it("validator rejects Python LeetCode annotations in every method signature", () => {
+    const parsed = parseProblemStatement({
+      text: "Longest Palindromic Substring Language: python LeetCode code",
+      defaultLanguage: "python"
+    });
+    const typedPython = [
+      "```python",
+      "class Solution:",
+      "    def longestPalindrome(self, s: str) -> str:",
+      "        return s",
+      "",
+      "    def expandAroundCenter(self, s: str, left: int, right: int) -> int:",
+      "        return 1",
+      "```"
+    ].join("\n");
+
+    expect(validateCodeResponse(typedPython, parsed, "python")).toBe(false);
+    expect(getCodeResponseValidationError(typedPython, parsed, "python")).toBe("Python LeetCode mode cannot include Python3 type annotations.");
   });
 
   it("splits long coding responses without breaking ordinary code blocks when possible", () => {

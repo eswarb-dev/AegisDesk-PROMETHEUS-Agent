@@ -29,7 +29,7 @@ export class PrometheusCore {
     const emotion = detectEmotion(input.text);
     const styleSignal = analyzeSlangStyle(input.text);
     const mode = decideCoreResponseMode(input.text, input.role);
-    const planned = mode === "CORE_MEMORY_REPLY" || mode === "EMOTIONAL_SUPPORT_REPLY"
+    const planned = (mode === "CORE_MEMORY_REPLY" || mode === "EMOTIONAL_SUPPORT_REPLY") && !(input.role === "owner" && isLongPersonalOwnerMessage(input.text))
       ? planCoreReply({ role: input.role, text: input.text, emotion, style: input.style })
       : null;
     const deterministicReply = planned && validatePlannedResponse(planned, input.role) ? planned : null;
@@ -46,6 +46,12 @@ export class PrometheusCore {
   basicFallback(role: UserRole | "owner", text: string): string {
     return planBasicFallback(role, text);
   }
+}
+
+function isLongPersonalOwnerMessage(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const words = normalized.split(/\s+/).filter(Boolean);
+  return words.length >= 45 && /\b(friend|friendship|monica|durga|left behind|reciprocity|support|checks on|checking on|always|hurt|pain|investment|invested|best friend|ignored|alone|feel|feeling|instagram|private account)\b/.test(normalized);
 }
 
 export const prometheusCore = new PrometheusCore();

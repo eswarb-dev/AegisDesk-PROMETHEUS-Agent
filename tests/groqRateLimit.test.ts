@@ -53,6 +53,23 @@ describe("Groq error handling", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).model).toBe("fallback");
   });
 
+  it("attempts fallback model after a primary rate limit without retrying primary", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("rate limited", { status: 429 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "fallback after rate limit" } }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new GroqClient(
+      { groqApiKey: "secret-key", groqModel: "primary", groqModelPrimary: "primary", groqModelFallback: "fallback" },
+      1000,
+      1
+    );
+
+    await expect(client.chat([{ role: "user", content: "hello" }])).resolves.toBe("fallback after rate limit");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe("primary");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).model).toBe("fallback");
+  });
   it("returns structured safe error status after model failure", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("bad gateway", { status: 502 })));
     const client = new GroqClient({ groqApiKey: "secret-key", groqModel: "primary" }, 1000, 0);

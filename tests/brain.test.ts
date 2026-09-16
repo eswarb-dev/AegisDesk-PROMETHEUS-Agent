@@ -10,6 +10,16 @@ const config = {
   botTimezone: "Asia/Kolkata"
 };
 
+function monicaFriendshipMessage(): string {
+  return [
+    "Monica is my friend and this is mainly about friendship reciprocity.",
+    "She trusted me with personal problems, I listened properly, understood her side, and tried to support her emotionally.",
+    "After that I felt like our bond became deeper from my side, but now I feel left behind because I am usually the one checking on her.",
+    "She has her male best friend and Durga around her, and even the Onam celebration day in our college is only a small context here.",
+    "The thing hurting me is that I keep investing, advising, and remembering her, but she does not naturally follow me on her private Instagram or choose me the same way."
+  ].join(" ");
+}
+
 describe("PROMETHEUS brain", () => {
   it("answers official email questions for owner trusted and public users without Groq", async () => {
     const store = new MemoryStore();
@@ -840,6 +850,151 @@ describe("PROMETHEUS brain", () => {
     await expect(brain.respond(1001, "today in my college we celebrated onam festival")).resolves.toContain("Sounds good, Sir");
     expect(groq.chat).not.toHaveBeenCalled();
   });
+
+
+
+  it("returns primary Groq model response for long Monica owner message", async () => {
+    const store = new MemoryStore();
+    const groq = {
+      chat: vi.fn(),
+      chatWithStatus: vi.fn().mockResolvedValue({
+        ok: true,
+        content: "I get what is actually hurting, Sir. This is about Monica, reciprocity, and feeling like you are carrying the friendship more than she is.",
+        model: "primary-model",
+        latencyMs: 12,
+        attempts: [{ model: "primary-model", slot: "primary", ok: true }]
+      })
+    };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, monicaFriendshipMessage());
+
+    expect(response).toMatch(/Monica|reciprocity|friendship|carrying/i);
+    expect(response).not.toMatch(/Full engine or not|won.t disappear|college festival|festival moment/i);
+    expect(groq.chatWithStatus).toHaveBeenCalledTimes(1);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it("returns fallback Groq model response when primary temporarily fails", async () => {
+    const store = new MemoryStore();
+    const groq = {
+      chat: vi.fn(),
+      chatWithStatus: vi.fn().mockResolvedValue({
+        ok: true,
+        content: "Fallback model: this is about Monica and the emotional imbalance in the friendship, Sir. You supported her, felt the bond grow from your side, and now it feels like you are carrying more of the care than you are receiving back.",
+        model: "fallback-model",
+        latencyMs: 20,
+        attempts: [
+          { model: "primary-model", slot: "primary", ok: false, errorType: "groq_network_error" },
+          { model: "fallback-model", slot: "fallback", ok: true }
+        ]
+      })
+    };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, monicaFriendshipMessage());
+
+    expect(response).toContain("Fallback model");
+    expect(response).toMatch(/Monica|emotional imbalance|friendship/i);
+    expect(groq.chatWithStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes complete Monica message concepts to Groq", async () => {
+    const store = new MemoryStore();
+    const groq = {
+      chat: vi.fn(),
+      chatWithStatus: vi.fn().mockResolvedValue({
+        ok: true,
+        content: "Sir, Monica is the center here: you supported her, felt the bond grow, and now the friendship feels one-sided.",
+        model: "primary-model",
+        latencyMs: 12,
+        attempts: [{ model: "primary-model", slot: "primary", ok: true }]
+      })
+    };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    await brain.respond(1001, monicaFriendshipMessage());
+
+    const sentMessages = groq.chatWithStatus.mock.calls[0][0];
+    const current = sentMessages.at(-1).content;
+    expect(current).toContain("CURRENT OWNER MESSAGE:");
+    expect(current).toMatch(/Monica/i);
+    expect(current).toMatch(/private Instagram/i);
+    expect(current).toMatch(/male best friend/i);
+    expect(current).toMatch(/Durga/i);
+    expect(current).toMatch(/friendship/i);
+    expect(current).toMatch(/checking on her|checks on her|check on her/i);
+    expect(current).toMatch(/left behind/i);
+  });
+
+  it("retries fallback model when primary Groq gives generic support for long Monica message", async () => {
+    const store = new MemoryStore();
+    const groq = {
+      chat: vi.fn(),
+      chatWithStatus: vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          content: "I'm here, Sir. Full engine or not, I won't disappear.",
+          model: "primary-model",
+          latencyMs: 12,
+          attempts: [{ model: "primary-model", slot: "primary", ok: true }]
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          content: "Sir, this is about Monica and the friendship imbalance: you supported her, felt the bond grow, and now it feels like you are carrying the care more than you are being included or remembered.",
+          model: "fallback-model",
+          latencyMs: 14,
+          attempts: [{ model: "fallback-model", slot: "fallback", ok: true }]
+        })
+    };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, monicaFriendshipMessage());
+
+    expect(response).toMatch(/Monica/i);
+    expect(response).toMatch(/supported|bond grow|friendship imbalance|carrying/i);
+    expect(response).not.toMatch(/Full engine or not|won.t disappear/i);
+    expect(groq.chatWithStatus).toHaveBeenCalledTimes(2);
+    expect(groq.chatWithStatus.mock.calls[1][1]).toEqual({ fallbackOnly: true });
+  });
+  it("uses transparent fallback when both Groq models fail for long Monica owner message", async () => {
+    const store = new MemoryStore();
+    const groq = {
+      chat: vi.fn(),
+      chatWithStatus: vi.fn().mockResolvedValue({
+        ok: false,
+        errorType: "groq_network_error",
+        fallbackUsed: true,
+        model: "fallback-model",
+        latencyMs: 30,
+        attempts: [
+          { model: "primary-model", slot: "primary", ok: false, errorType: "groq_network_error" },
+          { model: "fallback-model", slot: "fallback", ok: false, errorType: "groq_network_error" }
+        ]
+      })
+    };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, monicaFriendshipMessage());
+
+    expect(response).toContain("I read what you sent, Sir");
+    expect(response).toContain("full response engine didn't complete");
+    expect(response).not.toMatch(/Full engine or not|won.t disappear/i);
+    expect(groq.chatWithStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps short tired-mind owner support deterministic", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn() };
+    const brain = new PrometheusBrain(config, store, groq);
+
+    const response = await brain.respond(1001, "nothing but a tired mind");
+
+    expect(response).toMatch(/Tired mind|refresh|water|face wash|small reset/i);
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
 
   it("routes long personal owner story with minor Onam detail to Groq", async () => {
     const store = new MemoryStore();

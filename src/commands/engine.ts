@@ -10,6 +10,35 @@ export async function engineCommand(ctx: Context, config: AppConfig): Promise<vo
   }
 
   const snapshot = getEngineSnapshot(config);
+  const last = snapshot.lastConversationTrace;
+  const lastConversationSection = last
+    ? [
+        "",
+        "Last conversation request:",
+        "route:",
+        last.responseRoute,
+        "source:",
+        last.responseSource,
+        "primary model:",
+        last.primaryModelAttempted ?? "not attempted",
+        "primary result:",
+        last.primaryModelResult,
+        "fallback model:",
+        last.fallbackModelAttempted ?? "not attempted",
+        "fallback result:",
+        last.fallbackModelResult,
+        "intent:",
+        last.detectedIntent,
+        "message chars:",
+        String(last.currentMessageChars),
+        "prompt approx tokens:",
+        String(last.finalPromptApproxTokens),
+        "response chars:",
+        String(last.responseChars),
+        "trace id:",
+        last.requestTraceId
+      ]
+    : ["", "Last conversation request:", "none"];
   await ctx.reply([
     "PROMETHEUS Engine Status",
     "",
@@ -37,6 +66,7 @@ export async function engineCommand(ctx: Context, config: AppConfig): Promise<vo
     "Last Groq failure:",
     snapshot.lastGroqFailure
       ? `${snapshot.lastGroqFailure.type}${snapshot.lastGroqFailure.model ? ` on ${snapshot.lastGroqFailure.model}` : ""}, ${relativeTime(snapshot.lastGroqFailure.at)}`
-      : "never"
+      : "never",
+    ...lastConversationSection
   ].join("\n"));
 }

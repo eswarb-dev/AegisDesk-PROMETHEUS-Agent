@@ -8,9 +8,11 @@ export type ChatMessage = {
 };
 
 export type GroqErrorType = "groq_429" | "groq_timeout" | "groq_network_error" | "groq_invalid_response" | "groq_auth_error" | "groq_unknown_error";
+export type GroqModelAttempt = { model: string; slot: "primary" | "fallback"; ok: boolean; errorType?: GroqErrorType };
 export type GroqChatResult =
-  | { ok: true; content: string; model: string; latencyMs: number }
-  | { ok: false; errorType: GroqErrorType; fallbackUsed: true; model?: string; latencyMs: number };
+  | { ok: true; content: string; model: string; latencyMs: number; attempts: GroqModelAttempt[] }
+  | { ok: false; errorType: GroqErrorType; fallbackUsed: true; model?: string; latencyMs: number; attempts: GroqModelAttempt[] };
+export type GroqChatOptions = { fallbackOnly?: boolean };
 type GroqRuntimeConfig = Pick<AppConfig, "groqApiKey" | "groqModel"> & Partial<Pick<AppConfig, "groqModelPrimary" | "groqModelFallback">>;
 
 export class GroqError extends Error {
@@ -36,37 +38,47 @@ export class GroqClient {
     throw new GroqError(result.errorType);
   }
 
-  async chatWithStatus(messages: ChatMessage[]): Promise<GroqChatResult> {
+  async chatWithStatus(messages: ChatMessage[], options: GroqChatOptions = {}): Promise<GroqChatResult> {
     const startedAt = Date.now();
     if (!this.config.groqApiKey) {
       recordGroqFailure("groq_auth_error");
-      return { ok: false, errorType: "groq_auth_error", fallbackUsed: true, latencyMs: Date.now() - startedAt };
+      return { ok: false, errorType: "groq_auth_error", fallbackUsed: true, latencyMs: Date.now() - startedAt, attempts: [] };
     }
 
-    const models = this.getModelPlan();
+    const models = this.getModelPlan(options.fallbackOnly);
     let lastError: GroqError | undefined;
+    const attempts: GroqModelAttempt[] = [];
     for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
       const model = models[modelIndex];
-      const maxAttempts = modelIndex === 0 ? this.retries : 0;
+      const slot: GroqModelAttempt["slot"] = options.fallbackOnly || modelIndex > 0 ? "fallback" : "primary";
+      const maxAttempts = slot === "primary" ? this.retries : 0;
       for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
         try {
           const content = await this.requestChat(messages, model);
+          attempts.push({ model, slot, ok: true });
           recordGroqSuccess(model);
           logger.info("groq_success", { model });
-          return { ok: true, content, model, latencyMs: Date.now() - startedAt };
+          return { ok: true, content, model, latencyMs: Date.now() - startedAt, attempts };
         } catch (error) {
           lastError = normalizeGroqError(error);
+          attempts.push({ model, slot, ok: false, errorType: lastError.type });
           recordGroqFailure(lastError.type, model);
           logger.warn(lastError.type, { error_type: lastError.type, model, attempt });
-          if (lastError.type === "groq_429" || lastError.type === "groq_auth_error") {
-            return { ok: false, errorType: lastError.type, fallbackUsed: true, model, latencyMs: Date.now() - startedAt };
+          if (lastError.type === "groq_auth_error") {
+            return { ok: false, errorType: lastError.type, fallbackUsed: true, model, latencyMs: Date.now() - startedAt, attempts };
+          }
+          if (lastError.type === "groq_429") {
+            if (modelIndex >= models.length - 1) {
+              return { ok: false, errorType: lastError.type, fallbackUsed: true, model, latencyMs: Date.now() - startedAt, attempts };
+            }
+            break;
           }
           if (attempt < maxAttempts) {
             await delay(350);
             continue;
           }
           if (!shouldTryFallbackModel(lastError.type) || modelIndex >= models.length - 1) {
-            return { ok: false, errorType: lastError.type, fallbackUsed: true, model, latencyMs: Date.now() - startedAt };
+            return { ok: false, errorType: lastError.type, fallbackUsed: true, model, latencyMs: Date.now() - startedAt, attempts };
           }
         }
       }
@@ -74,17 +86,18 @@ export class GroqClient {
 
     const errorType = lastError?.type ?? "groq_unknown_error";
     recordGroqFailure(errorType);
-    return { ok: false, errorType, fallbackUsed: true, latencyMs: Date.now() - startedAt };
+    return { ok: false, errorType, fallbackUsed: true, latencyMs: Date.now() - startedAt, attempts };
   }
 
   async healthCheck(): Promise<GroqChatResult> {
     return this.chatWithStatus([{ role: "user", content: "reply ok" }]);
   }
 
-  private getModelPlan(): string[] {
+  private getModelPlan(fallbackOnly = false): string[] {
     const primary = this.config.groqModelPrimary ?? this.config.groqModel;
     const fallback = this.config.groqModelFallback;
-    return [primary, fallback].filter((model, index, all): model is string => Boolean(model) && all.indexOf(model) === index);
+    const planned = fallbackOnly ? [fallback] : [primary, fallback];
+    return planned.filter((model, index, all): model is string => Boolean(model) && all.indexOf(model) === index);
   }
 
   private async requestChat(messages: ChatMessage[], model: string): Promise<string> {
@@ -136,7 +149,7 @@ function normalizeGroqError(error: unknown): GroqError {
 }
 
 function shouldTryFallbackModel(type: GroqErrorType): boolean {
-  return type === "groq_timeout" || type === "groq_network_error" || type === "groq_invalid_response" || type === "groq_unknown_error";
+  return type === "groq_timeout" || type === "groq_429" || type === "groq_network_error" || type === "groq_invalid_response" || type === "groq_unknown_error";
 }
 
 function delay(ms: number): Promise<void> {

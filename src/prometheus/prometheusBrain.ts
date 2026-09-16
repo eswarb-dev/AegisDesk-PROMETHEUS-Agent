@@ -13,9 +13,9 @@ import type { UserRole } from "../memory/memoryTypes.js";
 import { isPrivateEswarQuestion, resolveAccessProfile } from "../security/accessControl.js";
 import { normalizeText } from "../utils/safeText.js";
 import { logger } from "../utils/logger.js";
-import { shouldSendColdStartNotice } from "./engineStatus.js";
+import { recordConversationTrace, shouldSendColdStartNotice, type ConversationResponseSource, type ConversationTrace } from "./engineStatus.js";
 import { fallbackResponder, type FallbackResponder } from "./fallbackResponder.js";
-import { GroqClient, type ChatMessage } from "./groqClient.js";
+import { GroqClient, GroqError, type ChatMessage, type GroqChatResult, type GroqErrorType } from "./groqClient.js";
 import { prometheusCore } from "./core/prometheusCore.js";
 import { buildCapabilityResponse, classifyOwnerIntent, deterministicOwnerFallback, validateOwnerResponse } from "./ownerIntent.js";
 import { NON_OWNER_SYSTEM_PROMPT, PROMETHEUS_SYSTEM_PROMPT } from "./prometheusPersona.js";
@@ -23,6 +23,7 @@ import { decideResponseMode, type ResponseDecision } from "./responseModeDecider
 
 type ChatEngine = {
   chat(messages: ChatMessage[]): Promise<string>;
+  chatWithStatus?(messages: ChatMessage[], options?: { fallbackOnly?: boolean }): Promise<GroqChatResult>;
 };
 
 export class PrometheusBrain {
@@ -35,7 +36,7 @@ export class PrometheusBrain {
     private readonly storage?: StorageProvider
   ) {}
 
-  async respond(userId: number | undefined, text: string): Promise<string> {
+  async respond(userId: number | undefined, text: string, metadata: { telegramMessageId?: number } = {}): Promise<string> {
     const cleanText = normalizeText(text);
     const emailReply = getOfficialEmailReply(cleanText);
     if (emailReply) return emailReply;
@@ -130,6 +131,8 @@ export class PrometheusBrain {
       : recentMessagesRepo?.getRecentMessagesByTelegramUserId && userId
       ? await recentMessagesRepo.getRecentMessagesByTelegramUserId(userId, 6).catch(() => [])
       : [];
+    const requestTraceId = createRequestTraceId();
+    const longOwnerAnalysis = identity.role === "owner" && isLongPersonalOwnerMessage(cleanText) ? analyzeLongOwnerMessage(cleanText) : null;
 
     if (identity.role === "trusted_contact" && isSubjectMemoryDumpQuestion(cleanText)) {
       return "I keep enough context to understand conversations better 😌\n\nBut I'm not going to dump private notes or conversations back at you.\nThat's not how I handle trust.";
@@ -154,7 +157,7 @@ export class PrometheusBrain {
           `Owner intent: ${ownerIntent}`,
           identity.role === "owner" ? `Current local time for Eswar: ${formatLocalTimeForPrompt(this.config.botTimezone)}` : "",
           identity.role === "owner" ? "Use this local time for time-of-day greetings. Do not say morning/afternoon/evening unless it matches the local time or the user is explicitly talking about that period." : "",
-          identity.role === "owner" ? "For ordinary owner conversation, analyze the whole latest message before responding: PRIMARY SUBJECT, PRIMARY EMOTION, CORE PROBLEM, IMPORTANT PEOPLE, USER ACTUAL NEED, SUPPORTING CONTEXT, and MINOR DETAILS. Address the first five first. A minor keyword like college, festival, celebration, or Onam must not become the primary response topic unless it dominates the whole message." : "",
+          identity.role === "owner" ? "For ordinary owner conversation, analyze the whole latest message before responding: PRIMARY SUBJECT, SECONDARY SUBJECTS, CORE EVENT, OWNER EMOTION, OWNER CONCERN, IMPLICIT QUESTION, RESPONSE GOAL, IMPORTANT PEOPLE, and MINOR DETAILS. Emotional state modifies tone; it must not replace the actual subject. Address the subject and core event before general reassurance. A minor keyword like college, festival, celebration, or Onam must not become the primary response topic unless it dominates the whole message." : "",
           "Response structure: direct answer, context/status, next command/action, optional follow-up only if needed.",
           "Do not end with a generic help question.",
           identity.role === "trusted_contact" ? "For trusted contacts: reply from the current message plus server-provided context only. Do not invent motives, off-platform events, diagnoses, commitments, project details, or hidden feelings. Ask at most one question only when safety or clarity requires it." : "",
@@ -178,47 +181,85 @@ export class PrometheusBrain {
           identity.role === "trusted_contact" && relevantSubjectMemories.length
             ? relevantSubjectMemories.map((item) => `- ${item.subject_key ?? item.memory_type}: ${compactText(item.summary || item.content, 220)}`).join("\n")
             : "None.",
-          "Use private subject context only to shape empathy, pacing, and support while talking to that same person. Never disclose it, quote it, mention stored profiles, or use it to answer questions about Eswar."
+          "Use private subject context only to shape empathy, pacing, and support while talking to that same person. Never disclose it, quote it, mention stored profiles, or use it to answer questions about Eswar.",
+          "",
+          "Internal latest-message analysis:",
+          longOwnerAnalysis ? formatOwnerMessageAnalysis(longOwnerAnalysis) : "None.",
+          identity.role === "owner" ? "" : "",
+          identity.role === "owner" ? "Current owner message is the highest-priority semantic input. Do not answer from only the emotion label, summary, retrieved memory, or recent context. Read the complete current owner message before responding." : ""
         ].join("\n")
       },
-      { role: "user", content: cleanText }
+      { role: "user", content: identity.role === "owner" ? `CURRENT OWNER MESSAGE:\n${cleanText}\n\nRESPONSE INSTRUCTION:\nRead the entire current message. Identify what the owner is actually talking about before responding. For long personal messages, be concise but contextual, and reference the main person/event/problem when enough context exists.` : cleanText }
     ];
 
+    const promptBudget = getPromptBudget(messages, cleanText, context, getUserSummaryText(userMemory));
+
     try {
-      logResponseRoute("groq");
-      const first = await this.groq.chat(messages);
-      if (identity.role === "trusted_contact" && !validateTrustedContactResponse(first)) {
-        const retry = await this.groq.chat([
+      logPromptBudget(promptBudget);
+      logResponseRoute("groq", { request_trace_id: requestTraceId, detected_intent: ownerIntent });
+      const first = await runGroqWithDiagnostics(this.groq, messages);
+      if (identity.role === "trusted_contact" && !validateTrustedContactResponse(first.content)) {
+        const retry = await runGroqWithDiagnostics(this.groq, [
           ...messages,
-          { role: "assistant", content: first },
+          { role: "assistant", content: first.content },
           { role: "user", content: "Rewrite grounded only in the user's latest text and server-provided context. Do not invent facts or off-platform context. Ask no question unless safety requires it. Keep it short and natural." }
         ]);
-        return validateTrustedContactResponse(retry) ? retry : buildGroundedTrustedFallback(cleanText, shareIndexes);
+        const response = validateTrustedContactResponse(retry.content) ? retry.content : buildGroundedTrustedFallback(cleanText, shareIndexes);
+        recordConversationTrace(buildConversationTrace({ requestTraceId, telegramMessageId: metadata.telegramMessageId, route: "groq", detectedIntent: ownerIntent, promptBudget, result: retry, source: validateTrustedContactResponse(retry.content) ? responseSourceFromGroq(retry.result) : "static_fallback", response }));
+        return response;
       }
-      if (identity.role !== "owner" || validateOwnerResponse(first, ownerIntent, cleanText, this.config.botTimezone)) return first;
-      const retry = await this.groq.chat([
+      if (identity.role === "owner" && longOwnerAnalysis && !validateLongOwnerContextualResponse(first.content, longOwnerAnalysis)) {
+        const retry = await runGroqWithDiagnostics(this.groq, [
+          ...messages,
+          { role: "assistant", content: first.content },
+          { role: "user", content: "The previous model failed to address the user's actual message. Read the complete CURRENT OWNER MESSAGE and respond specifically to its primary situation. Do not give a generic support-only sentence." }
+        ], { fallbackOnly: true });
+        const response = validateLongOwnerContextualResponse(retry.content, longOwnerAnalysis) ? retry.content : transparentLongOwnerFallback();
+        recordConversationTrace(buildConversationTrace({ requestTraceId, telegramMessageId: metadata.telegramMessageId, route: "groq", detectedIntent: ownerIntent, promptBudget, result: retry, source: validateLongOwnerContextualResponse(retry.content, longOwnerAnalysis) ? responseSourceFromGroq(retry.result) : "static_fallback", response }));
+        return response;
+      }
+      if (identity.role !== "owner" || validateOwnerResponse(first.content, ownerIntent, cleanText, this.config.botTimezone)) {
+        recordConversationTrace(buildConversationTrace({ requestTraceId, telegramMessageId: metadata.telegramMessageId, route: "groq", detectedIntent: ownerIntent, promptBudget, result: first, source: responseSourceFromGroq(first.result), response: first.content }));
+        return first.content;
+      }
+      const retry = await runGroqWithDiagnostics(this.groq, [
         ...messages,
-        { role: "assistant", content: first },
+        { role: "assistant", content: first.content },
         { role: "user", content: "Rewrite answer-first for Eswar B, your Creator and Owner. Address him as Sir. Do not call him bro. Do not ask a follow-up for casual chat, acknowledgements, simple confirmations, or shared events. Only ask one question when the user directly asks for help, requests a choice, or safety/clarity requires it." }
       ]);
-      return validateOwnerResponse(retry, ownerIntent, cleanText, this.config.botTimezone) ? retry : deterministicOwnerFallback(cleanText, ownerIntent);
+      const response = validateOwnerResponse(retry.content, ownerIntent, cleanText, this.config.botTimezone) ? retry.content : deterministicOwnerFallback(cleanText, ownerIntent);
+      recordConversationTrace(buildConversationTrace({ requestTraceId, telegramMessageId: metadata.telegramMessageId, route: "groq", detectedIntent: ownerIntent, promptBudget, result: retry, source: validateOwnerResponse(retry.content, ownerIntent, cleanText, this.config.botTimezone) ? responseSourceFromGroq(retry.result) : "static_fallback", response }));
+      return response;
     } catch (error) {
       const groqFailureType = error instanceof Error ? error.name || "Error" : "unknown";
-      logger.warn("groq_fallback_used", { role: identity.role, error_type: groqFailureType });
-      logResponseRoute("groq_fallback", { groq_failure_type: groqFailureType, fallback_category: identity.role === "owner" && isLongPersonalOwnerMessage(cleanText) ? "long_personal_owner" : "standard" });
+      logger.warn("groq_fallback_used", { role: identity.role, error_type: groqFailureType, request_trace_id: requestTraceId });
+      const fallbackCategory = identity.role === "owner" && isLongPersonalOwnerMessage(cleanText) ? "long_personal_owner" : "standard";
+      logResponseRoute("groq_fallback", { request_trace_id: requestTraceId, groq_failure_type: groqFailureType, fallback_category: fallbackCategory });
+      if (fallbackCategory === "long_personal_owner") {
+        const response = transparentLongOwnerFallback();
+        recordConversationTrace(buildConversationTrace({ requestTraceId, telegramMessageId: metadata.telegramMessageId, route: "groq_fallback", detectedIntent: ownerIntent, promptBudget, source: "static_fallback", response }));
+        return response;
+      }
       if (identity.role === "trusted_contact" && isTrustedShareableQuestion(cleanText)) {
-        return buildTrustedEswarAnswer(cleanText, shareIndexes);
+        const response = buildTrustedEswarAnswer(cleanText, shareIndexes);
+        recordConversationTrace(buildConversationTrace({ requestTraceId, telegramMessageId: metadata.telegramMessageId, route: "groq_fallback", detectedIntent: ownerIntent, promptBudget, source: "static_fallback", response }));
+        return response;
       }
       if (/who|what|when|where|remember|memory|know/i.test(cleanText)) {
-        return identity.role === "owner"
-          ? this.fallback.pick("owner_unknown", { chatId: chatKey, userText: cleanText })
-          : this.fallback.pick("non_owner", { chatId: chatKey, userText: cleanText });
+        const response = identity.role === "owner"
+          ? await this.fallback.pick("owner_unknown", { chatId: chatKey, userText: cleanText })
+          : await this.fallback.pick("non_owner", { chatId: chatKey, userText: cleanText });
+        recordConversationTrace(buildConversationTrace({ requestTraceId, telegramMessageId: metadata.telegramMessageId, route: "groq_fallback", detectedIntent: ownerIntent, promptBudget, source: "static_fallback", response }));
+        return response;
       }
-      if (identity.role === "owner") return prometheusCore.basicFallback("owner", cleanText);
-      if (identity.role === "trusted_contact") return prometheusCore.basicFallback("trusted_contact", cleanText);
-      return this.fallback.pick("non_owner", { chatId: chatKey, userText: cleanText });
-    }
-  }
+      const response = identity.role === "owner"
+        ? prometheusCore.basicFallback("owner", cleanText)
+        : identity.role === "trusted_contact"
+        ? prometheusCore.basicFallback("trusted_contact", cleanText)
+        : await this.fallback.pick("non_owner", { chatId: chatKey, userText: cleanText });
+      recordConversationTrace(buildConversationTrace({ requestTraceId, telegramMessageId: metadata.telegramMessageId, route: "groq_fallback", detectedIntent: ownerIntent, promptBudget, source: "static_fallback", response }));
+      return response;
+    }  }
 
   async publicRespond(text: string): Promise<string> {
     const emailReply = getOfficialEmailReply(text);
@@ -297,17 +338,197 @@ export class PrometheusBrain {
 }
 
 
+type PromptBudget = {
+  currentMessageChars: number;
+  currentMessageApproxTokens: number;
+  conversationContextApproxTokens: number;
+  memoryContextApproxTokens: number;
+  finalPromptApproxTokens: number;
+  conversationSummaryChars: number;
+  conversationSummaryApproxTokens: number;
+};
+
+type GroqCallOutcome = { content: string; result: GroqChatResult };
+
+type OwnerMessageAnalysis = {
+  primarySubject: string;
+  secondarySubjects: string[];
+  coreEvent: string;
+  ownerEmotion: string;
+  ownerConcern: string;
+  implicitQuestion: string;
+  responseGoal: string;
+  anchors: string[];
+};
+
+async function runGroqWithDiagnostics(groq: ChatEngine, messages: ChatMessage[], options: { fallbackOnly?: boolean } = {}): Promise<GroqCallOutcome> {
+  if (!groq.chatWithStatus) {
+    const content = await groq.chat(messages);
+    return { content, result: { ok: true, content, model: "unknown", latencyMs: 0, attempts: [{ model: "unknown", slot: options.fallbackOnly ? "fallback" : "primary", ok: true }] } };
+  }
+  const result = await groq.chatWithStatus(messages, options);
+  logGroqModelRoute(result);
+  if (result.ok) return { content: result.content, result };
+  throw new GroqError(result.errorType);
+}
+
+function logGroqModelRoute(result: GroqChatResult): void {
+  const primary = result.attempts.find((attempt) => attempt.slot === "primary");
+  const fallback = result.attempts.find((attempt) => attempt.slot === "fallback");
+  logger.info("groq_model_route", {
+    groq_primary: primary ? (primary.ok ? "success" : "failed") : "not_attempted",
+    groq_primary_error_type: primary?.errorType ? toSafeGroqCategory(primary.errorType) : undefined,
+    groq_fallback: fallback ? (fallback.ok ? "success" : "failed") : "not_attempted",
+    groq_fallback_error_type: fallback?.errorType ? toSafeGroqCategory(fallback.errorType) : undefined
+  });
+}
+
+function responseSourceFromGroq(result: GroqChatResult): ConversationResponseSource {
+  const success = result.attempts.find((attempt) => attempt.ok);
+  return success?.slot === "fallback" ? "groq_fallback_model" : "groq_primary";
+}
+
+function buildConversationTrace(input: {
+  requestTraceId: string;
+  telegramMessageId?: number;
+  route: string;
+  detectedIntent: string;
+  promptBudget: PromptBudget;
+  result?: GroqCallOutcome;
+  source: ConversationResponseSource;
+  response: string;
+}): ConversationTrace {
+  const primary = input.result?.result.attempts.find((attempt) => attempt.slot === "primary");
+  const fallback = input.result?.result.attempts.find((attempt) => attempt.slot === "fallback");
+  return {
+    requestTraceId: input.requestTraceId,
+    telegramMessageId: input.telegramMessageId,
+    responseRoute: input.route,
+    detectedIntent: input.detectedIntent,
+    intentConfidence: input.detectedIntent === "unknown" ? 0.5 : 0.8,
+    currentMessageChars: input.promptBudget.currentMessageChars,
+    currentMessageApproxTokens: input.promptBudget.currentMessageApproxTokens,
+    conversationContextApproxTokens: input.promptBudget.conversationContextApproxTokens,
+    memoryContextApproxTokens: input.promptBudget.memoryContextApproxTokens,
+    finalPromptApproxTokens: input.promptBudget.finalPromptApproxTokens,
+    primaryModelAttempted: primary?.model,
+    primaryModelResult: primary ? (primary.ok ? "success" : "failed") : "not_attempted",
+    fallbackModelAttempted: fallback?.model,
+    fallbackModelResult: fallback ? (fallback.ok ? "success" : "failed") : "not_attempted",
+    responseSource: input.source,
+    responseChars: input.response.length
+  };
+}
+
+function toSafeGroqCategory(type: GroqErrorType): "timeout" | "rate_limit" | "auth" | "invalid_model" | "context_length" | "network" | "empty_response" | "malformed_response" | "unknown" {
+  if (type === "groq_timeout") return "timeout";
+  if (type === "groq_429") return "rate_limit";
+  if (type === "groq_auth_error") return "auth";
+  if (type === "groq_network_error") return "network";
+  if (type === "groq_invalid_response") return "malformed_response";
+  return "unknown";
+}
+
+function getPromptBudget(messages: ChatMessage[], currentMessage: string, memoryContext: string, summaryText?: string): PromptBudget {
+  const finalPrompt = messages.map((message) => message.content).join("\n");
+  const conversationContext = messages.find((message) => message.content.includes("Recent same-chat context:"))?.content ?? "";
+  return {
+    currentMessageChars: currentMessage.length,
+    currentMessageApproxTokens: approximateTokens(currentMessage),
+    conversationContextApproxTokens: approximateTokens(conversationContext),
+    memoryContextApproxTokens: approximateTokens(memoryContext),
+    conversationSummaryChars: summaryText?.length ?? 0,
+    conversationSummaryApproxTokens: approximateTokens(summaryText ?? ""),
+    finalPromptApproxTokens: approximateTokens(finalPrompt)
+  };
+}
+
+function logPromptBudget(budget: PromptBudget): void {
+  logger.info("prompt_budget", {
+    current_message_chars: budget.currentMessageChars,
+    current_message_tokens_approx: budget.currentMessageApproxTokens,
+    memory_context_tokens_approx: budget.memoryContextApproxTokens,
+    conversation_context_tokens_approx: budget.conversationContextApproxTokens,
+    conversation_summary_chars: budget.conversationSummaryChars,
+    conversation_summary_tokens_approx: budget.conversationSummaryApproxTokens,
+    final_prompt_tokens_approx: budget.finalPromptApproxTokens
+  });
+}
+
+function approximateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+function transparentLongOwnerFallback(): string {
+  return "I read what you sent, Sir, but my full response engine didn't complete properly just now 🫠. I don't want to reply to one small part and miss what you're actually saying. Try that once more.";
+}
+
 function logResponseRoute(route: "command" | "deterministic_intent" | "groq" | "groq_fallback", details: Record<string, string | number | boolean | undefined> = {}): void {
   if (process.env.NODE_ENV !== "development") return;
   logger.info("response_route", { route, ...details });
 }
 
+function createRequestTraceId(): string {
+  return Math.random().toString(36).slice(2, 8);
+}
+
 function isLongPersonalOwnerMessage(text: string): boolean {
   const normalized = text.toLowerCase();
   const words = normalized.split(/\s+/).filter(Boolean);
-  return words.length >= 45 && /\b(friend|friendship|monica|durga|left behind|reciprocity|support|checks on|checking on|always|hurt|pain|investment|invested|best friend|ignored|alone|feel|feeling)\b/.test(normalized);
+  return words.length >= 45 && /\b(friend|friendship|monica|durga|left behind|reciprocity|support|checks on|checking on|always|hurt|pain|investment|invested|best friend|ignored|alone|feel|feeling|instagram|private account)\b/.test(normalized);
 }
 
+function analyzeLongOwnerMessage(text: string): OwnerMessageAnalysis {
+  const normalized = text.toLowerCase();
+  const hasMonica = /\bmonica\b/.test(normalized);
+  const anchors = [
+    hasMonica ? "monica" : "main person",
+    /private instagram/.test(normalized) ? "private instagram" : "",
+    /male best friend/.test(normalized) ? "male best friend" : "",
+    /\bdurga\b/.test(normalized) ? "durga" : "",
+    /friendship/.test(normalized) ? "friendship" : "",
+    /checking on|checks on|supported|support/.test(normalized) ? "support/checking" : "",
+    /left behind|one-sided|reciprocity|invested|investment/.test(normalized) ? "imbalance" : ""
+  ].filter(Boolean);
+  return {
+    primarySubject: hasMonica ? "Monica" : "the main friendship situation",
+    secondarySubjects: anchors.filter((anchor) => anchor !== "monica"),
+    coreEvent: hasMonica ? "Eswar supported Monica through a personal friendship issue and believed their bond became closer." : "Eswar described a detailed personal friendship situation.",
+    ownerEmotion: /hurt|pain|left behind|ignored|confused|disappointed/.test(normalized) ? "hurt / disappointed / confused" : "emotionally affected",
+    ownerConcern: /reciprocity|left behind|one-sided|invested|investment|checking on/.test(normalized) ? "he may be maintaining the friendship more than he feels remembered or included" : "the relationship may not feel equally held",
+    implicitQuestion: "what does this friendship actually mean, and why does it feel one-sided?",
+    responseGoal: hasMonica ? "help him understand the friendship imbalance without overclaiming Monica's intentions" : "help him understand the emotional imbalance without overclaiming the other person's intentions",
+    anchors
+  };
+}
+
+function formatOwnerMessageAnalysis(analysis: OwnerMessageAnalysis): string {
+  return [
+    `primary_subject: ${analysis.primarySubject}`,
+    `secondary_subjects: ${analysis.secondarySubjects.join(", ") || "none"}`,
+    `core_event: ${analysis.coreEvent}`,
+    `owner_emotion: ${analysis.ownerEmotion}`,
+    `owner_concern: ${analysis.ownerConcern}`,
+    `implicit_question: ${analysis.implicitQuestion}`,
+    `response_goal: ${analysis.responseGoal}`
+  ].join("\n");
+}
+
+function validateLongOwnerContextualResponse(response: string, analysis: OwnerMessageAnalysis): boolean {
+  const normalized = response.toLowerCase();
+  const compact = normalized.replace(/\s+/g, " ").trim();
+  if (response.length < 120) return false;
+  if (/^i['’]?m here,? sir\b/.test(compact) || /won['’]?t disappear/.test(compact)) return false;
+  const anchorHits = analysis.anchors.filter((anchor) => {
+    if (anchor === "support/checking") return /support|supported|checking|check(ed)? on|showing up/.test(normalized);
+    if (anchor === "imbalance") return /imbalance|one-sided|reciprocity|carrying|maintaining|left behind|invested|included|remembered/.test(normalized);
+    return normalized.includes(anchor);
+  }).length;
+  const subjectHit = analysis.primarySubject === "Monica" ? /\bmonica\b/.test(normalized) : anchorHits > 0;
+  const relationshipHit = /friendship|bond|care|connection|relationship/.test(normalized);
+  const concernHit = /one-sided|imbalance|reciprocity|carrying|maintaining|left behind|included|remembered|invested/.test(normalized);
+  return subjectHit && relationshipHit && concernHit && anchorHits >= 2;
+}
 function compactText(text: string, maxLength: number): string {
   const compact = text.replace(/\s+/g, " ").trim();
   return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;

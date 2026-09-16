@@ -75,7 +75,7 @@ export function registerMessageRouter(
         return;
       }
     }
-    const response = await brain.respond(ctx.from?.id, ctx.message.text);
+    const response = await brain.respond(ctx.from?.id, ctx.message.text, { telegramMessageId: ctx.message.message_id });
     await ctx.reply(response);
     if (ctx.from?.id) {
       if (storage?.kind === "supabase") {

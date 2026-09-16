@@ -13,9 +13,16 @@ export type CoreResponseMode =
 export function decideCoreResponseMode(text: string, role: UserRole | "owner"): CoreResponseMode {
   const intent = detectIntent(text);
   if (intent === "command") return "DETERMINISTIC_COMMAND";
+  if (role === "owner" && isLongPersonalOwnerMessage(text)) return "GROQ_ASSISTED_REPLY";
   if (intent === "greeting" || intent === "identity" || intent === "owner_memory") return "CORE_MEMORY_REPLY";
   if (detectEmotion(text).needsSupport) return "EMOTIONAL_SUPPORT_REPLY";
   if (role === "trusted_contact" && intent === "trusted_eswar_question") return "TRUSTED_CONTACT_REPLY";
   if (intent === "drafting" || intent === "complex_reasoning") return "GROQ_ASSISTED_REPLY";
   return "GROQ_ASSISTED_REPLY";
+}
+
+function isLongPersonalOwnerMessage(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const words = normalized.split(/\s+/).filter(Boolean);
+  return words.length >= 45 && /\b(friend|friendship|monica|durga|left behind|reciprocity|support|checks on|checking on|always|hurt|pain|investment|invested|best friend|ignored|alone|feel|feeling|instagram|private account)\b/.test(normalized);
 }

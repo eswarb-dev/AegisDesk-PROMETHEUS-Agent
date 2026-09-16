@@ -1,5 +1,6 @@
 import type { AppConfig } from "../config.js";
 import type { GroqErrorType } from "./groqClient.js";
+import { logger } from "../utils/logger.js";
 
 export type RuntimeGroqState = "unknown" | "ok" | "degraded";
 export type MemoryHealth = "supabase_connected" | "supabase_degraded";
@@ -8,6 +9,26 @@ export const serviceStartedAt = Date.now();
 
 let lastGroqSuccess: { at: number; model?: string } | null = null;
 let lastGroqFailure: { at: number; type: GroqErrorType; model?: string } | null = null;
+export type ConversationResponseSource = "deterministic" | "groq_primary" | "groq_fallback_model" | "static_fallback";
+export type ConversationTrace = {
+  requestTraceId: string;
+  telegramMessageId?: number;
+  responseRoute: string;
+  detectedIntent: string;
+  intentConfidence?: number;
+  currentMessageChars: number;
+  currentMessageApproxTokens: number;
+  conversationContextApproxTokens: number;
+  memoryContextApproxTokens: number;
+  finalPromptApproxTokens: number;
+  primaryModelAttempted?: string;
+  primaryModelResult: "success" | "failed" | "not_attempted";
+  fallbackModelAttempted?: string;
+  fallbackModelResult: "success" | "failed" | "not_attempted";
+  responseSource: ConversationResponseSource;
+  responseChars: number;
+};
+let lastConversationTrace: ConversationTrace | null = null;
 const coldStartNotices = new Set<string>();
 
 export function recordGroqSuccess(model?: string): void {
@@ -29,6 +50,34 @@ export function getMemoryHealth(config: Pick<AppConfig, "databaseProvider" | "su
   return config.supabaseUrl && config.supabaseServiceRoleKey ? "supabase_connected" : "supabase_degraded";
 }
 
+export function recordConversationTrace(trace: ConversationTrace): void {
+  lastConversationTrace = trace;
+  if (process.env.NODE_ENV === "development") {
+    logger.info("conversation_request_trace", {
+      request_trace_id: trace.requestTraceId,
+      telegram_message_id: trace.telegramMessageId,
+      response_route: trace.responseRoute,
+      detected_intent: trace.detectedIntent,
+      intent_confidence: trace.intentConfidence,
+      current_message_chars: trace.currentMessageChars,
+      current_message_approx_tokens: trace.currentMessageApproxTokens,
+      conversation_context_approx_tokens: trace.conversationContextApproxTokens,
+      memory_context_approx_tokens: trace.memoryContextApproxTokens,
+      final_prompt_approx_tokens: trace.finalPromptApproxTokens,
+      primary_model_attempted: trace.primaryModelAttempted,
+      primary_model_result: trace.primaryModelResult,
+      fallback_model_attempted: trace.fallbackModelAttempted,
+      fallback_model_result: trace.fallbackModelResult,
+      response_source: trace.responseSource,
+      response_chars: trace.responseChars
+    });
+  }
+}
+
+export function getLastConversationTrace(): ConversationTrace | null {
+  return lastConversationTrace;
+}
+
 export function getEngineSnapshot(config: Pick<AppConfig, "databaseProvider" | "supabaseUrl" | "supabaseServiceRoleKey">) {
   return {
     serviceStartedAt,
@@ -37,6 +86,7 @@ export function getEngineSnapshot(config: Pick<AppConfig, "databaseProvider" | "
     groq: getGroqState(),
     lastGroqSuccess,
     lastGroqFailure,
+    lastConversationTrace,
     fallback: "available" as const
   };
 }

@@ -66,6 +66,7 @@ export function validateOwnerResponse(response: string, intent: OwnerIntent, use
   if (/\b(how can i help|what can i help|what'?s on your mind|how can i assist)\b/i.test(trimmed)) return false;
   if (/\b(you'?re not a trusted contact|you are on eswar'?s contact list|my owner eswar|someone else|cannot access owner memory|can't access owner memory|bro|buddy|my guy|dear user)\b/i.test(trimmed)) return false;
   if (hasWrongTimeGreeting(trimmed, timezone)) return false;
+  if (isAcknowledgementOrConfirmation(userText) && hasTimeGreeting(trimmed)) return false;
   if (intent === "capability_check" && !/\/tell|linked|not linked|can send/i.test(trimmed)) return false;
   const questions = trimmed.match(/\?/g)?.length ?? 0;
   if (questions > 1) return false;
@@ -145,6 +146,13 @@ function hasWrongTimeGreeting(response: string, timezone: string): boolean {
   return false;
 }
 
+function hasTimeGreeting(response: string): boolean {
+  return /\bgood (morning|afternoon|evening|night)\b/i.test(response);
+}
+
 function titleCase(value: string): string {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
 }
+
+
+

@@ -841,6 +841,26 @@ describe("PROMETHEUS brain", () => {
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
+  it("routes long personal owner story with minor Onam detail to Groq", async () => {
+    const store = new MemoryStore();
+    const groq = { chat: vi.fn().mockResolvedValue("Sir, this is mainly about Monica, reciprocity, and feeling like you are the one carrying the friendship emotionally. The Onam day is just context, not the actual point.") };
+    const brain = new PrometheusBrain(config, store, groq);
+    const text = [
+      "Monica is my friend and I keep thinking about friendship reciprocity.",
+      "I am usually the person who checks on her first, asks if she is okay, and gives emotional support when she feels low.",
+      "She has a male best friend and Durga is also close there, so sometimes I feel like I am standing outside while still caring so much.",
+      "Onam celebration day in our college happened in between all this, but that is not the main thing.",
+      "The main thing is I feel left behind and emotionally invested, like I keep showing up for her but I do not know if the same care comes back to me."
+    ].join(" ");
+
+    const response = await brain.respond(1001, text);
+
+    expect(groq.chat).toHaveBeenCalledTimes(1);
+    expect(response).toMatch(/Monica|reciprocity|friendship|left behind|emotionally/i);
+    expect(response).not.toMatch(/college festival|Onam celebration.*lighter|festival moment/i);
+  });
+
+
   it("regenerates Groq owner reply when it asks an unnecessary casual question", async () => {
     const store = new MemoryStore();
     const groq = {

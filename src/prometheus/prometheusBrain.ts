@@ -45,7 +45,10 @@ export class PrometheusBrain {
       ? await this.storage.styles.getProfile(userId).catch(() => null)
       : null;
     const coreDecision = prometheusCore.decide({ role: identity.role, text: cleanText, style: styleProfile });
-    if (coreDecision.deterministicReply) return coreDecision.deterministicReply;
+    if (coreDecision.deterministicReply) {
+      logResponseRoute("deterministic_intent", { detected_intent: coreDecision.intent, confidence: 0.9 });
+      return coreDecision.deterministicReply;
+    }
     const access = {
       role: identity.role,
       canUsePrivateMemory: identity.role === "owner"
@@ -73,7 +76,10 @@ export class PrometheusBrain {
     const ownerIntent = identity.role === "owner" ? classifyOwnerIntent(cleanText) : "unknown";
     if (identity.role === "owner") {
       const directOwnerReply = getDirectOwnerReply(cleanText);
-      if (directOwnerReply) return directOwnerReply;
+      if (directOwnerReply) {
+        logResponseRoute("deterministic_intent", { detected_intent: ownerIntent, confidence: 0.95 });
+        return directOwnerReply;
+      }
       if (decision.mode === "FACT_RETRIEVAL_THEN_NATURAL_REPLY") {
         return this.answerOwnerFactQuestion(cleanText, decision);
       }
@@ -83,10 +89,16 @@ export class PrometheusBrain {
       }
       if (ownerIntent === "capability_check") {
         const capability = await buildCapabilityResponse(cleanText, this.storage);
-        if (capability) return capability;
+        if (capability) {
+          logResponseRoute("deterministic_intent", { detected_intent: ownerIntent, confidence: 0.95 });
+          return capability;
+        }
       }
       const ownerDeterministic = getDeterministicOwnerReply(cleanText, ownerIntent);
-      if (ownerDeterministic) return ownerDeterministic;
+      if (ownerDeterministic) {
+        logResponseRoute("deterministic_intent", { detected_intent: ownerIntent, confidence: 0.9 });
+        return ownerDeterministic;
+      }
     }
 
     if (process.env.NODE_ENV !== "test" && identity.role === "owner" && shouldSendColdStartNotice(chatKey) && !text.trim().startsWith("/")) {
@@ -142,6 +154,7 @@ export class PrometheusBrain {
           `Owner intent: ${ownerIntent}`,
           identity.role === "owner" ? `Current local time for Eswar: ${formatLocalTimeForPrompt(this.config.botTimezone)}` : "",
           identity.role === "owner" ? "Use this local time for time-of-day greetings. Do not say morning/afternoon/evening unless it matches the local time or the user is explicitly talking about that period." : "",
+          identity.role === "owner" ? "For ordinary owner conversation, analyze the whole latest message before responding: PRIMARY SUBJECT, PRIMARY EMOTION, CORE PROBLEM, IMPORTANT PEOPLE, USER ACTUAL NEED, SUPPORTING CONTEXT, and MINOR DETAILS. Address the first five first. A minor keyword like college, festival, celebration, or Onam must not become the primary response topic unless it dominates the whole message." : "",
           "Response structure: direct answer, context/status, next command/action, optional follow-up only if needed.",
           "Do not end with a generic help question.",
           identity.role === "trusted_contact" ? "For trusted contacts: reply from the current message plus server-provided context only. Do not invent motives, off-platform events, diagnoses, commitments, project details, or hidden feelings. Ask at most one question only when safety or clarity requires it." : "",
@@ -172,6 +185,7 @@ export class PrometheusBrain {
     ];
 
     try {
+      logResponseRoute("groq");
       const first = await this.groq.chat(messages);
       if (identity.role === "trusted_contact" && !validateTrustedContactResponse(first)) {
         const retry = await this.groq.chat([
@@ -188,8 +202,10 @@ export class PrometheusBrain {
         { role: "user", content: "Rewrite answer-first for Eswar B, your Creator and Owner. Address him as Sir. Do not call him bro. Do not ask a follow-up for casual chat, acknowledgements, simple confirmations, or shared events. Only ask one question when the user directly asks for help, requests a choice, or safety/clarity requires it." }
       ]);
       return validateOwnerResponse(retry, ownerIntent, cleanText, this.config.botTimezone) ? retry : deterministicOwnerFallback(cleanText, ownerIntent);
-    } catch {
-      logger.warn("groq_fallback_used", { role: identity.role });
+    } catch (error) {
+      const groqFailureType = error instanceof Error ? error.name || "Error" : "unknown";
+      logger.warn("groq_fallback_used", { role: identity.role, error_type: groqFailureType });
+      logResponseRoute("groq_fallback", { groq_failure_type: groqFailureType, fallback_category: identity.role === "owner" && isLongPersonalOwnerMessage(cleanText) ? "long_personal_owner" : "standard" });
       if (identity.role === "trusted_contact" && isTrustedShareableQuestion(cleanText)) {
         return buildTrustedEswarAnswer(cleanText, shareIndexes);
       }
@@ -278,6 +294,18 @@ export class PrometheusBrain {
     }
     return formatContactLogAnswer("a trusted contact", inbound, true);
   }
+}
+
+
+function logResponseRoute(route: "command" | "deterministic_intent" | "groq" | "groq_fallback", details: Record<string, string | number | boolean | undefined> = {}): void {
+  if (process.env.NODE_ENV !== "development") return;
+  logger.info("response_route", { route, ...details });
+}
+
+function isLongPersonalOwnerMessage(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const words = normalized.split(/\s+/).filter(Boolean);
+  return words.length >= 45 && /\b(friend|friendship|monica|durga|left behind|reciprocity|support|checks on|checking on|always|hurt|pain|investment|invested|best friend|ignored|alone|feel|feeling)\b/.test(normalized);
 }
 
 function compactText(text: string, maxLength: number): string {

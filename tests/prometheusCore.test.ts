@@ -39,6 +39,28 @@ describe("PROMETHEUS core response modes", () => {
     expect(casual.deterministicReply).not.toMatch(/\?$/);
     expect(event.deterministicReply).not.toMatch(/\?$/);
   });
+
+  it("allows short dominant festival messages to use the festival response", () => {
+    const decision = prometheusCore.decide({ role: "owner", text: "We went to the college festival today and it was really fun." });
+
+    expect(decision.deterministicReply).toContain("college festival");
+  });
+
+  it("does not let a minor festival detail override a long personal owner message", () => {
+    const text = [
+      "Monica is my friend and I keep thinking about friendship reciprocity.",
+      "I am usually the one who checks on her, notices when she is silent, and gives emotional support.",
+      "She has a male best friend and Durga also comes into the picture, so sometimes I feel left behind.",
+      "Onam celebration day in our college was there, but that is only one small part of the story.",
+      "The main thing is I feel emotionally invested and I do not know whether the friendship has the same care from her side."
+    ].join(" ");
+
+    const decision = prometheusCore.decide({ role: "owner", text });
+
+    expect(decision.deterministicReply).toBeNull();
+    expect(decision.mode).toBe("GROQ_ASSISTED_REPLY");
+  });
+
 });
 
 describe("PROMETHEUS adaptive learning", () => {

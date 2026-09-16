@@ -16,7 +16,7 @@ export function planCoreReply(input: ReplyPlanInput): string | null {
     if (/^(full engine|activate full engine|full mode)\b/.test(normalized)) return "Full engine active, Sir.";
     if (/^(how'?s going|how is going|how are you|how are things)\b/.test(normalized)) return "All good, Sir 😌 I’m here and tracking the flow.";
     if (/^(of course|sure|sure thing|just a casual one|casual one|both)\b/.test(normalized)) return "Got it, Sir 😌 We’ll keep it casual and natural.";
-    if (/\b(celebrated|celebration|festival|onam)\b/.test(normalized)) {
+    if (isDominantShortFestivalMessage(normalized)) {
       return "Sounds good, Sir 🎉 That kind of college festival moment gives the day a lighter feel.";
     }
     if (/\b(who created you|who is your creator|your creator)\b/.test(normalized)) return "You are, Sir.\nEswar B — my Creator and Owner.";
@@ -37,11 +37,27 @@ export function planCoreReply(input: ReplyPlanInput): string | null {
   return null;
 }
 
+function isLongPersonalOwnerMessage(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const words = normalized.split(/\s+/).filter(Boolean);
+  return words.length >= 45 && /\b(friend|friendship|monica|durga|left behind|reciprocity|support|checks on|checking on|always|hurt|pain|investment|invested|best friend|ignored|alone|feel|feeling)\b/.test(normalized);
+}
+
+function isDominantShortFestivalMessage(normalized: string): boolean {
+  if (!/\b(celebrated|celebration|festival|onam)\b/.test(normalized)) return false;
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length > 18) return false;
+  const emotionalRelationshipTerms = /\b(friend|friendship|monica|durga|left behind|reciprocity|support|checks on|checking on|always|hurt|pain|investment|invested|best friend|ignored|alone)\b/;
+  if (emotionalRelationshipTerms.test(normalized)) return false;
+  return /\b(college|campus|day|today|went|celebrated|celebration|festival|onam|fun|enjoy|enjoyed|nice|good)\b/.test(normalized);
+}
+
 export function planBasicFallback(role: UserRole | "owner", text: string): string {
   const normalized = text.toLowerCase();
   if (role === "owner") {
     if (/\b(dont leave|don't leave)\b/.test(normalized)) return "I’m here, Sir. Full engine or not, I won’t disappear.";
     if (/^\s*prometheus\s*$/i.test(text)) return "Here, Sir. Basic mode is active, but I’m still with you.";
+    if (isLongPersonalOwnerMessage(text)) return "I got what you're trying to tell me, Sir. There are a few layers in this and I don't want to respond to just one line and miss the actual point. My response engine had an issue just now. Try sending that once more 🫠";
     return "Still in basic mode, Sir. Groq has not recovered yet, but I’m here.";
   }
   if (/\b(low|sad|alone|lonely|not okay|not ok)\b/i.test(text)) {

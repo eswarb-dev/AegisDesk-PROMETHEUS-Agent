@@ -9,3 +9,5 @@ src/data/user_memories.json
 src/data/conversation_summaries.json
 src/data/eswar_memory.json
 src/data/eswar_share_index.json
+db_backup/
+

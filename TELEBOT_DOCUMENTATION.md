@@ -18,18 +18,20 @@ This bot is a conversational interface only. It is not connected to AegisDesk de
 - Owner-only personalised memory for Eswar
 - Persistent per-user safe conversation summaries
 - Owner-approved Eswar share index for trusted contacts
-- Trusted-contact architecture
+- Trusted-contact architecture and support alerts
 - Public-safe responses for normal users
 - Owner-aware natural response style
 - `/whoami` diagnostics for fixing owner ID setup
-- Rotating trusted-contact suggestion prompts
-- Groq API response engine
-- JSON fallback responses when Groq is unavailable
-- Telegram command routing
+- Groq API response engine with safe fallback responses
+- Owner-only coding assistance with Groq/Mistral provider fallback
+- Owner-only Gmail draft assistance with explicit draft/send workflows
+- Adaptive reply-style learning controls
+- Music search link helper through `/play`
+- Role-based Telegram command menus
 - Local polling mode for development
 - Webhook-ready HTTP backend for production
 - Render-compatible deployment setup
-- `GET /health` endpoint
+- `GET /health` and `GET /health/groq` endpoints
 
 ## Access Roles
 
@@ -64,17 +66,17 @@ Every memory item has a visibility classification:
 
 ```json
 {
-  "visibility": "owner_only|trusted_contacts|public"
+  "visibility": "owner_only|trusted_contacts|self_only|public"
 }
 ```
 
 Access rules:
 
-| Role | owner_only | trusted_contacts | public |
-|---|---:|---:|---:|
-| owner | yes | yes | yes |
-| trusted_contact | no | yes | yes |
-| user/pending | no | no | yes |
+| Role | owner_only | trusted_contacts | self_only | public |
+|---|---:|---:|---:|---:|
+| owner | yes | yes | same user only | yes |
+| trusted_contact | no | yes, if allowed | same user only | yes |
+| user/pending | no | no | same user only | yes |
 
 PROMETHEUS filters memory server-side before building the Groq prompt. Owner-only memory is never sent to Groq for trusted contacts or public users.
 
@@ -95,24 +97,62 @@ PROMETHEUS must never:
 
 ## Commands
 
-### Public Commands
+Full command details are maintained in `BOT_COMMANDS.md`.
+
+Public and trusted-contact commands:
 
 ```text
 /start
 /help
 /about
 /ping
+/play <song or artist>
+/privacy
+/style
+/resetstyle
+/learnmode
+/feedback good
+/feedback bad
+/forgetme
 /whoami
+/supportoff
 ```
 
-### Owner Commands
+`/supportoff` is for approved trusted contacts. It disables non-critical support memory for that contact; critical safety handling remains active.
+
+Owner commands:
 
 ```text
 /memory
+/memory reload
+/memory summary
+/memory users
+/memory user <contact_id>
 /contacts
 /trust <telegram_user_id> <contact_id>
 /untrust <contact_id>
 /tell <contact_id> <message>
+/send <contact_id> <message>
+/send_message <contact_id> <message>
+/notify <message>
+/admin
+/users
+/logs
+/chat
+/search
+/summary
+/export
+/audit
+/support
+/mail
+/shareindex
+/state
+/learning
+/engine
+/code
+/solve
+/leetcode
+/codeconfig
 ```
 
 Allowed `contact_id` values:
@@ -123,137 +163,46 @@ vathanya
 maddhurika
 ```
 
-Use lowercase contact IDs.
-
-Example:
-
-```text
-/trust 5559225697 vathanya
-```
-
 ## Trusted Contact Flow
 
 1. Trusted person opens `@AegisDesk_PrometheusBot`.
-2. They send:
-
-```text
-/start
-```
-
+2. They send `/start`.
 3. Backend stores their Telegram ID and chat ID as pending.
-4. Eswar runs:
-
-```text
-/contacts
-```
-
+4. Eswar runs `/contacts`.
 5. Eswar copies the pending numeric Telegram ID.
-6. Eswar approves them:
-
-```text
-/trust <telegram_user_id> aksharaa
-```
-
+6. Eswar approves them with `/trust <telegram_user_id> <contact_id>`.
 7. The user becomes a trusted contact.
 
-To revoke:
+To revoke access:
 
 ```text
 /untrust aksharaa
 ```
 
-## Trusted Contacts
-
-Initial trusted-contact slots:
-
-- Aksharaa
-- Vathanya
-- Maddhurika
-
-Their Telegram IDs are not hardcoded. They are captured only after each person runs `/start`, then approved by Eswar.
-
-Trusted contacts can ask limited questions about Eswar, but they receive only memories marked `trusted_contacts` or `public`.
-
-If a trusted contact casually mentions Eswar, PROMETHEUS returns a rotating set of generic safe suggestions. These suggestions avoid mental-health-leading prompts and do not reveal memory.
-
-Example:
-
-```text
-You can ask me about Eswar, but only within what he has allowed me to share 😌
-
-Try:
-- What is Eswar generally like?
-- What kind of conversations does he prefer?
-- How does he usually approach problems?
-- What should I keep in mind when talking to him?
-- What can you share without crossing privacy?
-
-Private conversations and owner-only memory stay restricted.
-```
-
-The exact questions rotate across several generic safe sets.
+Trusted contacts can ask limited questions about Eswar, but they receive only memories marked `trusted_contacts` or `public` and allowed for their contact ID. Owner-only memory stays restricted.
 
 ## Response Behavior
 
-### Owner Mode
-
-When Eswar is detected as owner, PROMETHEUS should sound natural, short, and personal.
-
-Examples:
-
-```text
-User: Hii
-PROMETHEUS: Hii Eswar 😌
-PROMETHEUS online.
-```
-
-```text
-User: Is this Eswar bro?
-PROMETHEUS: Yeah bro, it's you 😄
-Owner mode active.
-```
-
-PROMETHEUS should not repeat its full identity in every normal owner conversation.
-
-### Non-Owner Mode
+Owner mode should sound natural, short, and personal. PROMETHEUS should not repeat its full identity in every normal owner conversation.
 
 Normal users get short public-safe replies. They do not receive Eswar memory.
 
-Example:
-
-```text
-PROMETHEUS is active. Personalised memory is owner-restricted.
-```
-
-If a non-owner asks whether the bot is Eswar:
-
-```text
-No.
-I'm PROMETHEUS, a personalised agent. Owner mode is restricted.
-```
-
-### Trusted Contact Mode
-
-Trusted contacts can receive natural answers based only on server-filtered `trusted_contacts` and `public` memories.
-
-Private questions are refused:
-
-```text
-I know more than I'm allowed to share 😌
-That part stays between Eswar and me.
-```
+Trusted contacts can receive natural answers based only on server-filtered `trusted_contacts`, `self_only`, and `public` memory. Private questions are refused.
 
 ## Environment Variables
 
-Create `telebot/.env` from `.env.example`.
+Create `telebot/.env` from `.env.example`. Do not commit real secrets.
 
-Required:
+Required or commonly used variables:
 
 ```env
 TELEGRAM_BOT_TOKEN=
 GROQ_API_KEY=
 GROQ_MODEL=
+GROQ_MODEL_PRIMARY=
+GROQ_MODEL_FALLBACK=
 OWNER_TELEGRAM_ID=
+BOT_PUBLIC_URL=
 NODE_ENV=development
 PORT=3001
 DATABASE_PROVIDER=json
@@ -262,24 +211,27 @@ SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_ANON_KEY=
 ```
 
-Required for production webhook mode:
+Optional coding provider settings:
 
 ```env
-BOT_PUBLIC_URL=
+CODING_MODE_ENABLED=true
+DEFAULT_CODE_LANGUAGE=ask
+CODING_PROVIDER=groq
+CODING_PROVIDER_FALLBACK=mistral
+GROQ_CODE_MODEL=
+GROQ_CODE_MODEL_FALLBACK=
+CODING_INCLUDE_EXPLANATION=true
+CODING_INCLUDE_COMPLEXITY=true
+CODING_INCLUDE_TEST_CASES=true
+MISTRAL_API_KEY=
+MISTRAL_CODE_MODEL=codestral-latest
+MISTRAL_CODE_MODEL_FALLBACK=
+MISTRAL_CODE_ENABLED=true
+MISTRAL_CODE_TIMEOUT_MS=30000
+MISTRAL_CODE_MAX_RETRIES=1
 ```
 
-Never commit `.env`.
-
-For production Supabase memory, use:
-
-```env
-DATABASE_PROVIDER=supabase
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=server-only-service-role-key
-SUPABASE_ANON_KEY=optional-anon-key
-```
-
-The backend uses `SUPABASE_SERVICE_ROLE_KEY` only on the server. Do not expose it to Telegram users or frontend code.
+Optional Gmail draft settings are documented in `docs/GMAIL_DRAFT_SKILL.md`. Keep all Google refresh tokens and client secrets server-side only.
 
 ## Local Development
 
@@ -295,55 +247,39 @@ Run locally:
 npm run dev
 ```
 
-Health check:
+Build compiled output:
 
-```text
-http://localhost:3001/health
+```bash
+npm run build
 ```
 
-Expected response:
+Start compiled output:
 
-```json
-{
-  "status": "ok",
-  "service": "prometheus-telegram-chatbot"
-}
+```bash
+npm run start
 ```
+
+The compiled entry point is `dist/src/index.js`.
 
 ## Telegram Command Menu
 
-The bot registers its Telegram menu at startup using `setMyCommands`.
+The bot registers role-based Telegram menus at startup using `setMyCommands`.
 
-Restart the bot after command changes:
-
-```bash
-npm run dev
-```
-
-Current menu:
+Current menus:
 
 ```text
-/start
-/help
-/about
-/ping
-/memory
-/whoami
-/contacts
-/trust
-/untrust
-/tell
-/privacy
-/forgetme
-/shareindex
-/state
+Public: /start, /help, /about, /ping, /play, /privacy, /style, /learnmode, /forgetme, /whoami
+Trusted contact: public commands plus /supportoff
+Owner: /start, /help, /about, /ping, /engine, /whoami, /memory, /learning, /contacts, /notify, /admin, /support
 ```
+
+The owner menu intentionally stays compact. Detailed log, mail, coding, share-index, contact, and state commands remain available through backend command routing and help sections even when not shown as top-level menu items.
 
 ## Production Deployment
 
 The project includes `render.yaml`.
 
-Render should use:
+Render should build with:
 
 ```bash
 npm install && npm run build
@@ -362,17 +298,15 @@ NODE_ENV=production
 BOT_PUBLIC_URL=https://your-render-url
 ```
 
-Webhook endpoint:
+Endpoints:
 
 ```text
 POST /telegram/webhook
-```
-
-Health endpoint:
-
-```text
 GET /health
+GET /health/groq
 ```
+
+`GET /health` is the lightweight health endpoint. `GET /health/groq` performs a small Groq check and should not be used as a keep-awake ping.
 
 ## Data Files
 
@@ -381,6 +315,9 @@ Main data files:
 - `src/data/eswar_memory.json`
 - `src/data/trusted_contacts.json`
 - `src/data/fallback_responses.json`
+- `src/data/user_memories.json`
+- `src/data/conversation_summaries.json`
+- `src/data/eswar_share_index.json`
 
 During build, JSON data is copied into `dist/src/data`.
 
@@ -392,13 +329,7 @@ Current persistent data:
 - JSON local fallback when `DATABASE_PROVIDER=json`
 - Fallback responses in `src/data/fallback_responses.json`
 
-Current non-persistent data:
-
-- Raw full conversations
-- Private temporary session context
-- API request logs
-
-PROMETHEUS stores short, safe, structured summaries instead of raw full conversations.
+PROMETHEUS does not persist raw full conversations as primary memory. In Supabase mode it may store redacted bot-message history for owner-only review, search, summary, and export commands.
 
 ## Supabase Memory Backend
 
@@ -439,7 +370,7 @@ It reads local JSON memory files and upserts into Supabase:
 
 The script is designed to be idempotent and prints summary counts only. It does not print private memory content.
 
-## Persistent Per-User Memory
+## User Memory
 
 Each user can have a private `self_only` memory record. This is used only for that same Telegram user.
 
@@ -455,91 +386,32 @@ It may store:
 
 It must not be shown to other users.
 
-## User Memory Format
-
-Stored in `src/data/user_memories.json`:
-
-```json
-{
-  "telegram_user_id": "123456789",
-  "chat_id": "123456789",
-  "role": "trusted_contact|pending|user",
-  "contact_id": "aksharaa|null",
-  "display_name": "...",
-  "username": "...",
-  "memory_enabled": true,
-  "conversation_summary": "...",
-  "preferences": [],
-  "important_context": [],
-  "safe_notes": []
-}
-```
-
-Persistent per-user memory items use `visibility: "self_only"`.
-
-## Eswar Share Index
+## Eswar Share Index And State
 
 Trusted contacts do not query Eswar's owner memory directly.
 
-They receive answers from `src/data/eswar_share_index.json`, which stores owner-approved shareable summaries.
+They receive answers from `src/data/eswar_share_index.json`, which stores owner-approved shareable summaries. Filtering checks visibility, allowed contacts, sensitivity, and expiry.
 
-Filtering checks:
+Owner can create temporary state memory with `/state set <summary>`. State memories default to a 7-day expiry and start as `owner_only`. Owner can share a state key with `/state share all <key>` or `/state share aksharaa <key>`.
 
-- visibility
-- allowed contacts
-- sensitivity
-- expiry
+## Gmail Draft Skill
 
-Expired share-index items are ignored.
+Gmail commands are owner-only. PROMETHEUS can create, preview, list, send, and discard Gmail drafts when configured.
 
-## Trusted Contact Question Handling
+AI-assisted drafts require `CONFIRM DRAFT` before Gmail draft creation. Sending a draft requires an explicit `/mail send` command. See `docs/GMAIL_DRAFT_SKILL.md` for setup and command details.
 
-Trusted-contact question flow:
+## Coding Mode
 
-1. Resolve Telegram numeric ID.
-2. Resolve trusted contact ID.
-3. Refuse private or prompt-injection questions.
-4. Load only that user's own memory.
-5. Load only allowed Eswar share indexes.
-6. Build Groq context from filtered memory only.
-7. Answer naturally.
-
-Owner-only memory is never sent to Groq for trusted contacts.
-
-## Owner State Memory
-
-Owner can create temporary state memory:
+Coding commands are owner-only:
 
 ```text
-/state set <summary>
+/code <problem>
+/solve <problem>
+/leetcode <problem>
+/codeconfig
 ```
 
-State memories default to a 7-day expiry and start as `owner_only`.
-
-Owner can share a state key:
-
-```text
-/state share all <key>
-/state share aksharaa <key>
-```
-
-Shared state becomes `trusted_contacts` visibility and is filtered by allowed contact.
-
-## /forgetme and /privacy
-
-Users can inspect memory behavior:
-
-```text
-/privacy
-```
-
-Users can delete their stored user memory:
-
-```text
-/forgetme
-```
-
-This deletes user-specific PROMETHEUS memory. Trusted-contact approval metadata is still managed separately by owner commands.
+PROMETHEUS uses configured coding providers, validates responses, and preserves Python/Python3 compatibility rules for LeetCode-style output.
 
 ## Memory Safety Rules
 
@@ -559,26 +431,6 @@ Memory update flow:
 
 ```text
 conversation -> short safe summary -> memory item -> visibility policy -> filtered prompt
-```
-
-## Fallback Responses
-
-Fallback responses are split by audience:
-
-- `owner_api_error`
-- `owner_unknown`
-- `non_owner`
-
-Owner fallback keeps the PROMETHEUS style:
-
-```text
-Thinking engine is down for a moment, bro. Basic mode is still active.
-```
-
-Non-owner fallback remains restricted:
-
-```text
-Public-safe mode only. Owner memory is restricted.
 ```
 
 ## Testing
@@ -601,33 +453,13 @@ Audit:
 npm audit
 ```
 
-Current test coverage includes:
-
-- owner memory access
-- trusted-contact memory access
-- public-user restrictions
-- trusted-contact persistence
-- username spoofing protection
-- command permission checks
-- Groq context filtering
-- prompt-injection refusal
-- fallback loading
-- health endpoint
-- `/whoami` Telegram ID output
-- owner string/number ID comparison
-- owner direct replies
-- rotating trusted-contact suggestions
-- per-user memory creation
-- safe summary updates
-- `/forgetme`
-- share-index allowed-contact filtering
-- expired share-index filtering
-- owner state memory creation and sharing
+Current test coverage includes access control, command routing, command menus, persistent memory, Supabase storage behavior, trusted contacts, trusted support, Groq fallback/rate limits, Telegram send queue, Gmail draft behavior, coding provider routing, LeetCode Python/Python3 compatibility, and HTTP health endpoints.
 
 ## Important Limitations
 
-- JSON persistence is acceptable for local development, but production should eventually move trusted-contact and memory data to PostgreSQL, Supabase, or SQLite.
+- JSON persistence is acceptable for local development. Supabase Postgres is the production storage path already supported by the project.
 - `/tell` sends only owner-provided messages. It does not automatically generate sensitive alerts.
-- The bot does not currently implement advanced memory editing commands. Memory is manually edited in `eswar_memory.json`.
-- The bot intentionally does not persist full raw conversations. It stores short safe summaries only.
+- Advanced memory editing is still limited. Some seed/share workflows exist through `/shareindex` and `/state`, but direct full memory editing remains intentionally constrained.
+- The bot intentionally does not persist full raw conversations as primary memory.
 - Telegram command menu updates after bot restart, but Telegram clients may take a short time to refresh cached menus.
+- PROMETHEUS remains a Telegram conversational layer. It is not the AegisDesk device-control channel.

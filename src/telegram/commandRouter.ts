@@ -39,6 +39,7 @@ import { whoamiCommand } from "../commands/whoami.js";
 import { TrustedContactService } from "../contacts/trustedContactService.js";
 import { MemoryStore } from "../memory/memoryStore.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
+import { logger } from "../utils/logger.js";
 
 export function registerCommands(
   bot: Telegraf,
@@ -47,6 +48,13 @@ export function registerCommands(
   contacts: TrustedContactService,
   storage: StorageProvider
 ): void {
+  bot.use((ctx, next) => {
+    const incomingMessage = ctx.message as { text?: unknown } | undefined;
+    if (process.env.NODE_ENV === "development" && typeof incomingMessage?.text === "string" && incomingMessage.text.startsWith("/")) {
+      logger.info("response_route", { route: "command" });
+    }
+    return next();
+  });
   bot.start((ctx) => startCommand(ctx, config, store, contacts, storage));
   bot.help((ctx) => helpCommand(ctx, config, contacts, storage));
   bot.command("about", aboutCommand);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { privacyCommand } from "../src/commands/privacy.js";
 import { supportCommand } from "../src/commands/support.js";
 import { TrustedSupportService } from "../src/support/trustedSupportService.js";
+import { getRecentOwnerSupportAlert } from "../src/support/ownerAlertContext.js";
 import { createMockContext } from "./helpers.js";
 
 const config = { ownerTelegramId: "1001", groqModel: "test", groqApiKey: "test" };
@@ -96,6 +97,18 @@ describe("trusted support mode", () => {
     expect(storage._supportEvents[0]).toMatchObject({ emotional_state: "emotionally_distressed", severity: "medium", owner_notified: true });
   });
 
+  it("support alert is sent out-of-band and records safe owner follow-up context", async () => {
+    const storage = createStorage();
+    const sent: string[] = [];
+    const telegram = { sendMessage: async (_chatId: string, message: string) => { sent.push(message); return { message_id: 77 }; } };
+    const service = new TrustedSupportService(config, storage as never, { chat: async () => "That sounds heavy. I’ll let Eswar know gently." });
+
+    const reply = await service.handleMessage({ contact: contact(), text: "I can't handle this", telegram: telegram as never });
+
+    expect(reply).not.toContain("PROMETHEUS Support Alert");
+    expect(sent[0]).toContain("Sir, Aksharaa asked something about you inside PROMETHEUS.");
+    expect(getRecentOwnerSupportAlert()).toMatchObject({ type: "trusted_support", contactId: "aksharaa", telegramUserId: "2002", alertId: "alert-1" });
+  });
   it("high distress sends owner DM", async () => {
     const storage = createStorage();
     const sent: string[] = [];

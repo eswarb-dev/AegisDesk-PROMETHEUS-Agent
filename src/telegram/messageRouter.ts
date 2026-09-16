@@ -16,6 +16,8 @@ import { prometheusCore } from "../prometheus/core/prometheusCore.js";
 import { shouldRejectSecret } from "../prometheus/core/memoryReflectionEngine.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
 import { TrustedSupportService } from "../support/trustedSupportService.js";
+import { formatContactDisplayName, getRecentOwnerSupportAlert, isOwnerAlertFollowup } from "../support/ownerAlertContext.js";
+import { isOwner } from "../memory/ownerMemory.js";
 import { logger } from "../utils/logger.js";
 
 export function registerMessageRouter(
@@ -27,7 +29,14 @@ export function registerMessageRouter(
   bot.on(message("text"), async (ctx) => {
     if (ctx.message.text.startsWith("/")) return;
     if (storage && await handleMailDraftConfirmation(ctx, config, storage)) return;
-    if (storage && await answerOwnerLogQuestion(ctx.message.text, ctx, config, storage)) return;
+    if (isOwner(ctx.from?.id, config) && isOwnerAlertFollowup(ctx.message.text)) {
+      const alert = getRecentOwnerSupportAlert();
+      if (alert) {
+        await ctx.reply(`That was ${formatContactDisplayName(alert.contactId)}, Sir.`);
+        return;
+      }
+    }
+    if (storage && isShortOwnerLogQuestion(ctx.message.text) && await answerOwnerLogQuestion(ctx.message.text, ctx, config, storage)) return;
     const coding = config.coding ?? defaultCodingConfig();
     const followUpLanguage = normalizeCodeLanguage(ctx.message.text);
     if (coding.enabled && followUpLanguage && ctx.from?.id && ctx.chat?.id) {
@@ -76,7 +85,9 @@ export function registerMessageRouter(
       }
     }
     const response = await brain.respond(ctx.from?.id, ctx.message.text, { telegramMessageId: ctx.message.message_id });
+    if (process.env.NODE_ENV === "development") logger.info("normal_reply_generated", { role: isOwner(ctx.from?.id, config) ? "owner" : "non_owner" });
     await ctx.reply(response);
+    if (process.env.NODE_ENV === "development") logger.info("normal_reply_sent", { role: isOwner(ctx.from?.id, config) ? "owner" : "non_owner" });
     if (ctx.from?.id) {
       if (storage?.kind === "supabase") {
         const user = await storage.users.getTelegramUserById(ctx.from.id);
@@ -179,4 +190,10 @@ function summarizeForStorage(text: string): string {
     return "Recent interaction contained sensitive content and was not summarized.";
   }
   return `Last useful interaction summary: ${clean.slice(0, 220)}`;
+}
+
+function isShortOwnerLogQuestion(text: string): boolean {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length > 18) return false;
+  return /\b(who messaged you today|summari[sz]e today|did|has|have|does|what|show|list|check)\b/i.test(text);
 }

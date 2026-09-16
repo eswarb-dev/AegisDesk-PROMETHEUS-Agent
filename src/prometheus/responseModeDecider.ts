@@ -32,6 +32,8 @@ export function decideResponseMode(text: string): ResponseDecision {
     return { mode: "CODING_PROBLEM_SOLVER" };
   }
 
+  if (isLongPersonalStory(normalized)) return { mode: "GROQ_CHAT" };
+
   const contactId = CONTACTS.find((contact) => normalized.includes(contact));
   if (isContactLogQuestion(normalized)) {
     return {
@@ -61,6 +63,12 @@ export function decideTrustedContactResponseMode(input: {
     return { mode: "CONTEXTUAL_REPLY_TO_OWNER_RELAY" };
   }
   return decideResponseMode(input.text);
+}
+
+function isLongPersonalStory(text: string): boolean {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 45) return false;
+  return /\b(friend|friendship|monica|durga|left behind|reciprocity|support|checking on|private instagram|male best friend|bond|hurt|investing|remembering)\b/.test(text);
 }
 
 function isContactLogQuestion(text: string): boolean {

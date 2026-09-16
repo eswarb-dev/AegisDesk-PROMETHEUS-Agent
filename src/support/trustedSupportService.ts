@@ -4,6 +4,8 @@ import type { ChatMessage } from "../prometheus/groqClient.js";
 import { GroqClient } from "../prometheus/groqClient.js";
 import type { StorageProvider } from "../storage/storageProvider.js";
 import { redactSecrets } from "../utils/redactSecrets.js";
+import { logger } from "../utils/logger.js";
+import { recordOwnerSupportAlert } from "./ownerAlertContext.js";
 import { EmotionalStateDetector, type DistressSeverity, type EmotionalSignal } from "./emotionalStateDetector.js";
 
 type ChatEngine = {
@@ -170,6 +172,8 @@ export class TrustedSupportService {
     const body = [
       "PROMETHEUS Support Alert",
       "",
+      `Sir, ${contact.displayName} asked something about you inside PROMETHEUS.`,
+      "",
       `${contact.displayName} seems ${describeState(signal)}.`,
       "",
       "State:",
@@ -204,7 +208,29 @@ export class TrustedSupportService {
       body,
       delivered: false
     });
-    await telegram.sendMessage(this.config.ownerTelegramId, body);
+    if (process.env.NODE_ENV === "development") {
+      logger.info("support_owner_notification_queued", {
+        support_alert_id: alert.id,
+        contact_id: contact.contactId,
+        owner_notification_queued: true
+      });
+    }
+    const sent = await telegram.sendMessage(this.config.ownerTelegramId, body);
+    recordOwnerSupportAlert({
+      type: "trusted_support",
+      contactId: contact.contactId,
+      telegramUserId: contact.telegramUserId,
+      createdAt: new Date().toISOString(),
+      alertId: alert.id
+    });
+    if (process.env.NODE_ENV === "development") {
+      logger.info("support_owner_notification_sent", {
+        support_alert_id: alert.id,
+        contact_id: contact.contactId,
+        owner_notification_sent: true,
+        owner_notification_message_id: (sent as { message_id?: number } | undefined)?.message_id
+      });
+    }
     if (alert.id) await this.storage.support.markOwnerAlertDelivered(alert.id);
   }
 }
